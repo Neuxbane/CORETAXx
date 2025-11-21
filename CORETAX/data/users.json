@@ -1,0 +1,16 @@
+[
+    {
+        "id": "usr-bb11d9101fa6",
+        "name": "Admin Sistem",
+        "email": "admin@pwd.go.id",
+        "username": "admin",
+        "password": "$2y$12$3eguEdUoX.yEz14Za.e9yOJ.OkOxQeDl/eggFn6GCmTmApZVuTNq6",
+        "role": "admin",
+        "nik": "0000000000000000",
+        "dateOfBirth": "1990-01-01",
+        "phone": "",
+        "address": "",
+        "isActive": true,
+        "createdAt": "2025-11-21T14:55:48+00:00"
+    }
+]
