@@ -1,0 +1,682 @@
+<div class="space-y-6">
+  <div class="flex items-center gap-4">
+    <button type="button" class="back-btn p-2 hover:bg-gray-100 rounded-lg transition-colors">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+      </svg>
+    </button>
+    <div>
+      <h1 id="form-title" class="text-gray-900">Tambah Aset Baru</h1>
+      <p id="form-subtitle" class="text-gray-600">Daftarkan aset baru Anda</p>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <form id="asset-form" class="space-y-6">
+      <!-- STEP 1: ASSET TYPE SELECTION -->
+      <div>
+        <label class="block text-gray-700 font-semibold mb-3">1. Tipe Aset *</label>
+        <div class="grid grid-cols-1 gap-3">
+          <!-- LANCAR -->
+          <label class="flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all border-gray-300 hover:border-gray-400 asset-type-radio" data-type="LANCAR">
+            <input type="radio" name="assetType" value="LANCAR" class="mt-1" />
+            <div class="flex-1">
+              <p class="text-gray-900 font-medium">Aset Lancar</p>
+              <p class="text-gray-600 text-sm">Aset yang dapat dengan cepat diubah menjadi uang tunai tanpa mengurangi nilainya secara signifikan</p>
+            </div>
+          </label>
+
+          <!-- SEMI LANCAR -->
+          <label class="flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all border-gray-300 hover:border-gray-400 asset-type-radio" data-type="SEMI_LANCAR">
+            <input type="radio" name="assetType" value="SEMI_LANCAR" class="mt-1" />
+            <div class="flex-1">
+              <p class="text-gray-900 font-medium">Aset Semi Lancar</p>
+              <p class="text-gray-600 text-sm">Aset yang likuiditasnya berada di antara aset lancar dan tidak lancar</p>
+            </div>
+          </label>
+
+          <!-- TIDAK LANCAR -->
+          <label class="flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all border-gray-300 hover:border-gray-400 asset-type-radio" data-type="TIDAK_LANCAR">
+            <input type="radio" name="assetType" value="TIDAK_LANCAR" class="mt-1" />
+            <div class="flex-1">
+              <p class="text-gray-900 font-medium">Aset Tidak Lancar</p>
+              <p class="text-gray-600 text-sm">Aset yang membutuhkan waktu lama untuk dicairkan menjadi uang tunai</p>
+            </div>
+          </label>
+        </div>
+        <p id="assetType-error" class="mt-2 text-red-600 hidden"></p>
+      </div>
+
+      <!-- CONDITIONAL: ASET LANCAR FIELDS -->
+      <div id="lancar-section" class="hidden space-y-4 pt-4 border-t border-gray-200">
+        <h3 class="text-gray-900 font-semibold">2. Jenis Aset Lancar</h3>
+        <div>
+          <label class="block text-gray-700 mb-2">Pilih Jenis *</label>
+          <select name="currentAssetType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="">-- Pilih Jenis Aset Lancar --</option>
+            <option value="KAS_BANK">Kas &amp; Bank</option>
+            <option value="PIUTANG_USAHA">Piutang Usaha</option>
+            <option value="PIUTANG_LAINNYA">Piutang Lainnya</option>
+            <option value="PERSEDIAAN">Persediaan</option>
+            <option value="DEPOSITO_JANGKA_PENDEK">Deposito Jangka Pendek</option>
+            <option value="INVESTASI_LANCAR">Investasi Lancar</option>
+          </select>
+          <p id="currentAssetType-error" class="mt-1 text-red-600 hidden"></p>
+        </div>
+
+        <!-- KAS BANK FIELDS -->
+        <div id="kas-bank-fields" class="hidden pl-4 border-l-2 border-green-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Kas &amp; Bank</h4>
+          <div>
+            <label class="block text-gray-700 mb-2">Jenis Kas/Bank *</label>
+            <select name="cashBankType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <option value="">-- Pilih Jenis --</option>
+              <option value="KAS_TUNAI">Kas Tunai</option>
+              <option value="REKENING_GIRO">Rekening Giro</option>
+              <option value="REKENING_TABUNGAN">Rekening Tabungan</option>
+            </select>
+            <p id="cashBankType-error" class="mt-1 text-red-600 hidden"></p>
+          </div>
+
+          <div id="bank-details" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Nama Bank *</label>
+              <input type="text" name="bankName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Bank BCA / Bank Mandiri" maxlength="100" />
+              <p id="bankName-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Rekening *</label>
+              <input type="text" name="accountNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="1234567890" maxlength="30" />
+              <p id="accountNumber-error" class="mt-1 text-red-600 hidden"></p>
+              <p class="mt-1 text-gray-500 text-sm">6-30 digit angka</p>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-gray-700 mb-2">Mata Uang *</label>
+            <select name="currency" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <option value="IDR">IDR - Rupiah</option>
+              <option value="USD">USD - US Dollar</option>
+              <option value="EUR">EUR - Euro</option>
+              <option value="SGD">SGD - Singapore Dollar</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- PIUTANG USAHA FIELDS -->
+        <div id="piutang-usaha-fields" class="hidden pl-4 border-l-2 border-green-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Piutang Usaha</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Nama Debitur *</label>
+              <input type="text" name="debtorName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="PT. Contoh Perusahaan" maxlength="100" />
+              <p id="debtorName-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Invoice/Kontrak *</label>
+              <input type="text" name="invoiceNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="INV/2024/001" maxlength="50" />
+              <p id="invoiceNumber-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Tanggal Jatuh Tempo *</label>
+              <input type="date" name="dueDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <p id="dueDate-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Status Piutang *</label>
+              <select name="receivableStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Status --</option>
+                <option value="BELUM_JATUH_TEMPO">Belum Jatuh Tempo</option>
+                <option value="JATUH_TEMPO">Jatuh Tempo</option>
+                <option value="MACET">Macet</option>
+              </select>
+              <p id="receivableStatus-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- PERSEDIAAN FIELDS -->
+        <div id="persediaan-fields" class="hidden pl-4 border-l-2 border-green-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Persediaan</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Kategori Persediaan *</label>
+              <select name="inventoryCategory" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Kategori --</option>
+                <option value="BAHAN_BAKU">Bahan Baku</option>
+                <option value="BARANG_DALAM_PROSES">Barang Dalam Proses</option>
+                <option value="BARANG_JADI">Barang Jadi</option>
+                <option value="BARANG_DAGANG">Barang Dagang</option>
+              </select>
+              <p id="inventoryCategory-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Kode Barang</label>
+              <input type="text" name="itemCode" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="SKU-001" maxlength="30" />
+              <p id="itemCode-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Jumlah *</label>
+              <input type="number" name="quantity" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0" min="0" step="0.0001" />
+              <p id="quantity-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Satuan *</label>
+              <select name="unit" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Satuan --</option>
+                <option value="PCS">PCS (Pieces)</option>
+                <option value="KG">KG (Kilogram)</option>
+                <option value="LITER">LITER</option>
+                <option value="BOX">BOX</option>
+                <option value="UNIT">UNIT</option>
+                <option value="METER">METER</option>
+              </select>
+              <p id="unit-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONDITIONAL: ASET SEMI LANCAR FIELDS -->
+      <div id="semi-lancar-section" class="hidden space-y-4 pt-4 border-t border-gray-200">
+        <h3 class="text-gray-900 font-semibold">2. Jenis Aset Semi Lancar</h3>
+        <div>
+          <label class="block text-gray-700 mb-2">Pilih Jenis *</label>
+          <select name="semiCurrentAssetType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="">-- Pilih Jenis Aset Semi Lancar --</option>
+            <option value="INVESTASI_JANGKA_MENENGAH">Investasi Jangka Menengah</option>
+            <option value="SERTIFIKAT_DEPOSITO">Sertifikat Deposito</option>
+            <option value="PIUTANG_JANGKA_MENENGAH">Piutang Jangka Menengah</option>
+          </select>
+          <p id="semiCurrentAssetType-error" class="mt-1 text-red-600 hidden"></p>
+        </div>
+
+        <!-- INVESTASI JANGKA MENENGAH FIELDS -->
+        <div id="investasi-jangka-menengah-fields" class="hidden pl-4 border-l-2 border-yellow-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Investasi Jangka Menengah</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Jenis Investasi *</label>
+              <select name="investmentType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Jenis --</option>
+                <option value="OBLIGASI">Obligasi</option>
+                <option value="REKSADANA_PENDAPATAN_TETAP">Reksadana Pendapatan Tetap</option>
+                <option value="DEPOSITO_BERJANGKA_1_3_TAHUN">Deposito Berjangka 1-3 Tahun</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+              <p id="investmentType-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Penerbit / Manajer Investasi *</label>
+              <input type="text" name="issuer" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="PT. Manajer Investasi" maxlength="100" />
+              <p id="issuer-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Kontrak</label>
+              <input type="text" name="contractNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="KONTR/2024/001" maxlength="50" />
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Tanggal Jatuh Tempo *</label>
+              <input type="date" name="maturityDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <p id="maturityDate-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-2">Bunga / Return (%) per tahun</label>
+            <input type="number" name="couponOrExpectedReturn" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.00" min="0" max="100" step="0.01" />
+            <p class="mt-1 text-gray-500 text-sm">0-100%, maksimal 2 desimal</p>
+          </div>
+        </div>
+
+        <!-- SERTIFIKAT DEPOSITO FIELDS -->
+        <div id="sertifikat-deposito-fields" class="hidden pl-4 border-l-2 border-yellow-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Sertifikat Deposito</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Nama Bank *</label>
+              <input type="text" name="bankName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Bank BCA / Bank Mandiri" maxlength="100" />
+              <p id="bankName-error2" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Sertifikat *</label>
+              <input type="text" name="certificateNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="CERT/2024/001" maxlength="50" />
+              <p id="certificateNumber-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Tanggal Jatuh Tempo *</label>
+              <input type="date" name="maturityDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <p id="maturityDate-error2" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Suku Bunga (%) *</label>
+              <input type="number" name="interestRate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.00" min="0" max="100" step="0.01" />
+              <p id="interestRate-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONDITIONAL: ASET TIDAK LANCAR FIELDS -->
+      <div id="tidak-lancar-section" class="hidden space-y-4 pt-4 border-t border-gray-200">
+        <h3 class="text-gray-900 font-semibold">2. Jenis Aset Tidak Lancar</h3>
+        <div>
+          <label class="block text-gray-700 mb-2">Pilih Jenis *</label>
+          <select name="nonCurrentAssetType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="">-- Pilih Jenis Aset Tidak Lancar --</option>
+            <option value="TANAH">Tanah</option>
+            <option value="BANGUNAN">Bangunan</option>
+            <option value="KENDARAAN">Kendaraan</option>
+            <option value="MESIN_PERALATAN">Mesin / Peralatan</option>
+            <option value="PERABOT_KANTOR">Perabot Kantor</option>
+            <option value="ASET_TAK_BERWUJUD">Aset Tak Berwujud</option>
+            <option value="INVESTASI_JANGKA_PANJANG">Investasi Jangka Panjang</option>
+          </select>
+          <p id="nonCurrentAssetType-error" class="mt-1 text-red-600 hidden"></p>
+        </div>
+
+        <!-- TANAH FIELDS -->
+        <div id="tanah-fields" class="hidden pl-4 border-l-2 border-blue-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Tanah</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Jenis Tanah *</label>
+              <select name="landType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Jenis --</option>
+                <option value="TANAH_KOSONG">Tanah Kosong</option>
+                <option value="TANAH_DENGAN_BANGUNAN">Tanah dengan Bangunan</option>
+                <option value="LAHAN_PERTANIAN">Lahan Pertanian</option>
+                <option value="LAHAN_INDUSTRI">Lahan Industri</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+              <p id="landType-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Luas Tanah (m²) *</label>
+              <input type="number" name="landArea" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0" min="0" step="0.01" />
+              <p id="landArea-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-2">Alamat Lengkap *</label>
+            <textarea name="fullAddress" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="3" maxlength="500" placeholder="Alamat lengkap lokasi tanah"></textarea>
+            <p id="fullAddress-error" class="mt-1 text-red-600 hidden"></p>
+            <p class="mt-1 text-gray-500 text-sm">5-500 karakter</p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Status Kepemilikan *</label>
+              <select name="ownershipStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Status --</option>
+                <option value="MILIK">Milik</option>
+                <option value="SEWA">Sewa</option>
+                <option value="HAK_GUNA">Hak Guna</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+              <p id="ownershipStatus-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Jenis Sertifikat *</label>
+              <select name="certificateType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Jenis --</option>
+                <option value="SHM">SHM (Sertifikat Hak Milik)</option>
+                <option value="HGB">HGB (Hak Guna Bangunan)</option>
+                <option value="HGU">HGU (Hak Guna Usaha)</option>
+                <option value="HP">HP (Hak Pakai)</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+              <p id="certificateType-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-2">Nomor Sertifikat Tanah *</label>
+            <input type="text" name="certificateNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="SHM No. 123/2023" maxlength="50" />
+            <p id="certificateNumber-error2" class="mt-1 text-red-600 hidden"></p>
+          </div>
+        </div>
+
+        <!-- BANGUNAN FIELDS -->
+        <div id="bangunan-fields" class="hidden pl-4 border-l-2 border-blue-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Bangunan</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Jenis Bangunan *</label>
+              <select name="buildingType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Jenis --</option>
+                <option value="RUMAH">Rumah</option>
+                <option value="APARTEMEN">Apartemen</option>
+                <option value="RUKO">Ruko</option>
+                <option value="KANTOR">Kantor</option>
+                <option value="GUDANG">Gudang</option>
+                <option value="PABRIK">Pabrik</option>
+                <option value="HOTEL">Hotel</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+              <p id="buildingType-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Fungsi Bangunan</label>
+              <select name="buildingFunction" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Fungsi --</option>
+                <option value="HUNIAN">Hunian</option>
+                <option value="KOMERSIAL">Komersial</option>
+                <option value="INDUSTRI">Industri</option>
+                <option value="PERKANTORAN">Perkantoran</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-2">Alamat Lengkap *</label>
+            <textarea name="fullAddress" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="3" maxlength="500" placeholder="Alamat lengkap lokasi bangunan"></textarea>
+            <p id="fullAddress-error2" class="mt-1 text-red-600 hidden"></p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Luas Bangunan (m²) *</label>
+              <input type="number" name="buildingArea" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0" min="0" step="0.01" />
+              <p id="buildingArea-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Luas Tanah (m²)</label>
+              <input type="number" name="landArea" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0" min="0" step="0.01" />
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Jumlah Lantai *</label>
+              <input type="number" name="floors" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="1" min="1" max="200" />
+              <p id="floors-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Tahun Dibangun *</label>
+              <input type="number" name="yearBuilt" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="2020" min="1900" max="2100" />
+              <p id="yearBuilt-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Tahun Renovasi Terakhir</label>
+              <input type="number" name="lastRenovationYear" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="2024" min="1900" max="2100" />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Material Struktur</label>
+              <select name="structureMaterial" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih --</option>
+                <option value="BETON">Beton</option>
+                <option value="BAJA">Baja</option>
+                <option value="KAYU">Kayu</option>
+                <option value="KOMBINASI">Kombinasi</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Material Atap</label>
+              <select name="roofMaterial" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih --</option>
+                <option value="GENTENG">Genteng</option>
+                <option value="METAL">Metal</option>
+                <option value="BETON">Beton</option>
+                <option value="ASBES">Asbes</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Material Dinding</label>
+              <select name="wallMaterial" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih --</option>
+                <option value="BATA">Bata</option>
+                <option value="BETON">Beton</option>
+                <option value="PANEL">Panel</option>
+                <option value="KAYU">Kayu</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+            </div>
+          </div>
+          <div id="hotel-fields" class="hidden">
+            <label class="block text-gray-700 mb-2">Jumlah Kamar *</label>
+            <input type="number" name="roomCount" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0" min="1" max="9999" />
+            <p id="roomCount-error" class="mt-1 text-red-600 hidden"></p>
+          </div>
+        </div>
+
+        <!-- KENDARAAN FIELDS -->
+        <div id="kendaraan-fields" class="hidden pl-4 border-l-2 border-blue-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Kendaraan</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Jenis Kendaraan *</label>
+              <select name="vehicleType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Jenis --</option>
+                <option value="MOBIL_PENUMPANG">Mobil Penumpang</option>
+                <option value="TRUK">Truk</option>
+                <option value="MOTOR">Motor</option>
+                <option value="BUS">Bus</option>
+                <option value="ALAT_BERAT_BERJALAN">Alat Berat Berjalan</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+              <p id="vehicleType-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Jenis Bahan Bakar *</label>
+              <select name="fuelType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">-- Pilih Jenis --</option>
+                <option value="BENSIN">Bensin</option>
+                <option value="DIESEL">Diesel</option>
+                <option value="LISTRIK">Listrik</option>
+                <option value="HYBRID">Hybrid</option>
+                <option value="LAINNYA">Lainnya</option>
+              </select>
+              <p id="fuelType-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Merek *</label>
+              <input type="text" name="brand" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Toyota / Honda" maxlength="50" />
+              <p id="brand-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Model *</label>
+              <input type="text" name="model" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Avanza / Civic" maxlength="50" />
+              <p id="model-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Polisi *</label>
+              <input type="text" name="licensePlate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="B 1234 XYZ" />
+              <p id="licensePlate-error" class="mt-1 text-red-600 hidden"></p>
+              <p class="mt-1 text-gray-500 text-sm">Format: B 1234 CD</p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Tahun Pembuatan *</label>
+              <input type="number" name="yearManufactured" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="2020" min="1900" max="2100" />
+              <p id="yearManufactured-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Rangka *</label>
+              <input type="text" name="chassisNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="CHASSIS123456" />
+              <p id="chassisNumber-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Mesin *</label>
+              <input type="text" name="engineNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="ENGINE123456" />
+              <p id="engineNumber-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-2">Status Kepemilikan *</label>
+            <select name="ownershipStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <option value="">-- Pilih Status --</option>
+              <option value="MILIK">Milik</option>
+              <option value="SEWA">Sewa</option>
+              <option value="KREDIT">Kredit</option>
+              <option value="LAINNYA">Lainnya</option>
+            </select>
+            <p id="ownershipStatus-error2" class="mt-1 text-red-600 hidden"></p>
+          </div>
+        </div>
+
+        <!-- MESIN PERALATAN FIELDS -->
+        <div id="mesin-peralatan-fields" class="hidden pl-4 border-l-2 border-blue-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Mesin / Peralatan</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Jenis Mesin *</label>
+              <input type="text" name="machineType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Mesin Produksi" maxlength="100" />
+              <p id="machineType-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Merek *</label>
+              <input type="text" name="brand" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Siemens" maxlength="50" />
+              <p id="brand-error2" class="mt-1 text-red-600 hidden"></p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-gray-700 mb-2">Nomor Seri *</label>
+              <input type="text" name="serialNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="SN123456" maxlength="50" />
+              <p id="serialNumber-error" class="mt-1 text-red-600 hidden"></p>
+            </div>
+            <div>
+              <label class="block text-gray-700 mb-2">Kapasitas</label>
+              <input type="text" name="capacity" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="100 HP" maxlength="50" />
+            </div>
+          </div>
+        </div>
+
+        <!-- ASET TAK BERWUJUD FIELDS -->
+        <div id="aset-tak-berwujud-fields" class="hidden pl-4 border-l-2 border-blue-500 space-y-4">
+          <h4 class="text-gray-800 font-medium">Detail Aset Tak Berwujud</h4>
+          <div>
+            <label class="block text-gray-700 mb-2">Jenis Aset *</label>
+            <select name="intangibleType" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <option value="">-- Pilih Jenis --</option>
+              <option value="LISENSI">Lisensi</option>
+              <option value="PATEN">Paten</option>
+              <option value="MEREK_DAGANG">Merek Dagang</option>
+              <option value="HAK_CIPTA">Hak Cipta</option>
+              <option value="LAINNYA">Lainnya</option>
+            </select>
+            <p id="intangibleType-error" class="mt-1 text-red-600 hidden"></p>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-2">Nomor Registrasi *</label>
+            <input type="text" name="registrationNumber" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="REG123456" maxlength="50" />
+            <p id="registrationNumber-error" class="mt-1 text-red-600 hidden"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- BASIC INFORMATION (shown after asset type selected) -->
+      <div id="basic-fields" class="hidden space-y-4 pt-4 border-t border-gray-200">
+        <h3 class="text-gray-900 font-semibold">Informasi Dasar Aset</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-gray-700 mb-2">Nama Aset *</label>
+            <input type="text" name="assetName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Contoh: Toyota Avanza 2020" maxlength="100" />
+            <p id="assetName-error" class="mt-1 text-red-600 hidden"></p>
+            <p class="mt-1 text-gray-500 text-sm">3-100 karakter, huruf, angka, dan simbol dasar</p>
+          </div>
+          <div>
+            <label class="block text-gray-700 mb-2">Nilai Aset (Rp) *</label>
+            <input type="number" name="acquisitionValue" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0" min="0" step="0.01" />
+            <p id="acquisitionValue-error" class="mt-1 text-red-600 hidden"></p>
+            <p class="mt-1 text-gray-500 text-sm">Max: Rp 9.999.999.999.999,99</p>
+          </div>
+        </div>
+        <div>
+          <label class="block text-gray-700 mb-2">Tanggal Perolehan *</label>
+          <input type="date" name="acquisitionDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          <p id="acquisitionDate-error" class="mt-1 text-red-600 hidden"></p>
+          <p class="mt-1 text-gray-500 text-sm">Format: MM/DD/YYYY, Tahun 1900-2100</p>
+        </div>
+        <div>
+          <label class="block text-gray-700 mb-2">Lampiran (PDF)</label>
+          <div class="space-y-3">
+            <label for="asset-attachment-upload" class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors">
+              <svg class="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6 6h6"></path>
+              </svg>
+              <span class="text-gray-600 text-sm">Klik untuk upload lampiran PDF</span>
+              <input id="asset-attachment-upload" type="file" accept="application/pdf" multiple="" class="hidden" />
+            </label>
+            <div id="attachment-list" class="space-y-2 text-sm text-gray-600">
+              <p class="text-gray-500 text-sm">Belum ada lampiran.</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-gray-700 mb-2">Foto Aset (PNG/JPG)</label>
+          <div class="space-y-3">
+            <label for="asset-photo-upload" class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors">
+              <svg class="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h4l2-3h6l2 3h4a2 2 0 012 2v9a2 2 0 01-2 2H3a2 2 0 01-2-2V9a2 2 0 012-2z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13l2 2 4-4m1-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
+              </svg>
+              <span class="text-gray-600 text-sm">Upload foto aset</span>
+              <input id="asset-photo-upload" type="file" accept="image/png,image/jpeg,image/jpg" multiple="" class="hidden" />
+            </label>
+            <div id="photo-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm text-gray-600">
+              <p class="text-gray-500 text-sm col-span-full">Belum ada foto.</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-gray-700 mb-2">Deskripsi / Catatan</label>
+          <textarea name="description" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="3" maxlength="2000" placeholder="Catatan tambahan tentang aset (opsional)"></textarea>
+          <p class="mt-1 text-gray-500 text-sm"><span id="description-count">0</span>/2000 karakter</p>
+        </div>
+      </div>
+
+      <!-- TAX CALCULATION DISPLAY -->
+      <div id="tax-calculation" class="hidden p-4 bg-blue-50 border-2 border-blue-200 rounded-lg space-y-3">
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+          </svg>
+          <h3 class="text-blue-900 font-semibold">Perhitungan Pajak Terutang</h3>
+        </div>
+        <div class="bg-white rounded-lg p-4 space-y-2">
+          <div class="flex justify-between items-center pb-2 border-b border-gray-200">
+            <span class="text-gray-700">Tarif Pajak Dasar:</span>
+            <span id="tax-base-rate" class="text-gray-900">0%</span>
+          </div>
+          <div id="tax-modifiers" class="space-y-1"></div>
+          <div class="flex justify-between items-center pt-2 border-t-2 border-blue-200">
+            <span class="text-gray-900 font-medium">Total Tarif Pajak:</span>
+            <span id="tax-total-rate" class="text-blue-600 font-semibold">0%</span>
+          </div>
+          <div class="flex justify-between items-center pt-2 mt-2 border-t-2 border-blue-300">
+            <span class="text-gray-900 font-medium">Pajak Terutang:</span>
+            <span id="tax-amount" class="text-blue-600 font-bold">Rp 0</span>
+          </div>
+        </div>
+        <div class="text-xs text-gray-600 bg-white rounded p-2">
+          <p>💡 Perhitungan ini berdasarkan tarif pajak daerah yang berlaku. Pajak akan otomatis terdaftar dalam sistem.</p>
+        </div>
+      </div>
+
+      <!-- FORM BUTTONS -->
+      <div id="form-buttons" class="hidden flex gap-3 pt-4 border-t border-gray-200">
+        <button type="submit" class="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+          <span id="submit-btn-text">Simpan Aset</span>
+        </button>
+        <button type="button" class="back-btn px-6 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors">Batal</button>
+      </div>
+    </form>
+  </div>
+</div>

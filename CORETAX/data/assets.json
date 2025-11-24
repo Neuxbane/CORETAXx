@@ -1,1 +1,40 @@
-[]
+[
+    {
+        "id": "ast-001",
+        "userId": "user-1",
+        "name": "Toyota Avanza Hitam",
+        "type": "Kendaraan",
+        "registrationNumber": "B1234ABC",
+        "location": "Bandung",
+        "assetKind": "Kendaraan",
+        "value": 150000000,
+        "acquisitionValue": 150000000,
+        "taxAmount": 2250000,
+        "taxRate": 1.5,
+        "fuelType": "Bensin",
+        "vehicleType": "Mobil Penumpang",
+        "photos": [],
+        "attachments": [],
+        "createdAt": "2025-11-24T00:05:26+00:00"
+    },
+    {
+        "id": "ast-002",
+        "userId": "user-1",
+        "name": "Rumah Tinggal di Arcamanik",
+        "type": "Bangunan",
+        "registrationNumber": "HM-2024-001",
+        "location": "Bandung, Arcamanik",
+        "assetKind": "Bangunan",
+        "value": 500000000,
+        "acquisitionValue": 500000000,
+        "taxAmount": 2000000,
+        "taxRate": 0.4,
+        "buildingArea": 150,
+        "landArea": 300,
+        "certificateType": "SHM",
+        "buildingType": "Rumah Tinggal",
+        "photos": [],
+        "attachments": [],
+        "createdAt": "2025-11-24T00:05:26+00:00"
+    }
+]

@@ -1,1 +1,24 @@
-[]
+[
+    {
+        "id": "tax-001",
+        "userId": "user-1",
+        "assetId": "ast-001",
+        "assetName": "Toyota Avanza Hitam",
+        "amount": 2250000,
+        "rate": 1.5,
+        "dueDate": "2026-05-24",
+        "status": "unpaid",
+        "createdAt": "2025-11-24T00:05:26+00:00"
+    },
+    {
+        "id": "tax-002",
+        "userId": "user-1",
+        "assetId": "ast-002",
+        "assetName": "Rumah Tinggal di Arcamanik",
+        "amount": 2000000,
+        "rate": 0.4,
+        "dueDate": "2026-09-24",
+        "status": "unpaid",
+        "createdAt": "2025-11-24T00:05:26+00:00"
+    }
+]

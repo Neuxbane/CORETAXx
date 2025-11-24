@@ -1,0 +1,26 @@
+<div class="space-y-6">
+  <div>
+    <h2 class="text-2xl font-bold text-gray-900 mb-1">Dashboard</h2>
+    <p id="greeting-text" class="text-gray-600">Selamat datang!</p>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+      <p class="text-gray-600 text-sm">Total Aset</p>
+      <p id="stat-assets" class="text-3xl font-bold text-gray-900">0</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+      <p class="text-gray-600 text-sm">Pajak Kurang Bayar</p>
+      <p id="stat-tax" class="text-3xl font-bold text-red-600">Rp 0</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+      <p class="text-gray-600 text-sm">Jatuh Tempo (30 Hari)</p>
+      <p id="stat-upcoming" class="text-3xl font-bold text-orange-600">0</p>
+    </div>
+  </div>
+
+  <div id="upcoming-container" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Pajak Jatuh Tempo Terdekat</h3>
+    <div id="upcoming-list"></div>
+  </div>
+</div>

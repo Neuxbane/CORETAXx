@@ -1,0 +1,88 @@
+<div class="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
+  <div class="w-full max-w-md">
+    <div class="bg-white rounded-2xl shadow-xl p-8">
+      <div class="text-center mb-8">
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">CORETAX</h1>
+        <p class="text-gray-600">Manajemen Aset dan Pajak</p>
+      </div>
+
+      <div class="flex gap-2 mb-6 border-b border-gray-200">
+        <button type="button" class="auth-tab flex-1 py-3 text-sm font-semibold text-slate-900 border-b-2 border-blue-600" data-tab="login">Masuk</button>
+        <button type="button" class="auth-tab flex-1 py-3 text-sm font-semibold text-slate-500 border-b-2 border-transparent hover:border-gray-300" data-tab="register">Buat Akun</button>
+      </div>
+
+      <!-- LOGIN FORM -->
+      <div id="login-panel" class="auth-panel space-y-4">
+        <form id="login-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Email / Username</label>
+            <input type="text" name="identifier" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="email@example.com" required="" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+            <input type="password" name="password" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" required="" />
+          </div>
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors">Masuk</button>
+        </form>
+        <p id="login-error" class="text-sm text-red-600 hidden"></p>
+        <div class="mt-4 pt-4 border-t border-gray-200">
+          <p class="text-center text-gray-600 text-sm">Demo: admin / admin123</p>
+        </div>
+      </div>
+
+      <!-- REGISTER FORM -->
+      <div id="register-panel" class="auth-panel hidden space-y-4">
+        <form id="register-form" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap *</label>
+              <input type="text" name="name" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Nama lengkap" required="" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Username *</label>
+              <div class="relative">
+                <input type="text" id="register-username" name="username" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="username" required="" />
+                <span class="check-icon absolute right-3 top-1/2 -translate-y-1/2"></span>
+              </div>
+              <p id="username-status" class="text-sm mt-1 text-gray-600"></p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+            <div class="relative">
+              <input type="email" id="register-email" name="email" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="email@example.com" required="" />
+              <span class="check-icon absolute right-3 top-1/2 -translate-y-1/2"></span>
+            </div>
+            <p id="email-status" class="text-sm mt-1 text-gray-600"></p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Password *</label>
+              <input type="password" name="password" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" required="" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Konfirmasi Password *</label>
+              <input type="password" name="confirmPassword" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" required="" />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">NIK (16 digit) *</label>
+              <input type="text" name="nik" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="1234567890123456" pattern="[0-9]{16}" minlength="16" maxlength="16" required="" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Tanggal Lahir *</label>
+              <input type="date" name="dateOfBirth" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" required="" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Alamat</label>
+            <input type="text" name="address" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Alamat lengkap" />
+          </div>
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors">Daftar</button>
+        </form>
+        <p id="register-error" class="text-sm text-red-600 hidden"></p>
+      </div>
+    </div>
+  </div>
+</div>
