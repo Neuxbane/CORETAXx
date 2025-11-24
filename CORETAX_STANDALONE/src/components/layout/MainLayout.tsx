@@ -10,11 +10,12 @@ import { Menu, X } from 'lucide-react';
 interface MainLayoutProps {
   user: any;
   onLogout: () => void;
+  onUserUpdate: (user: any) => void;
 }
 
 type Page = 'dashboard' | 'profile' | 'assets' | 'taxes' | 'settings';
 
-export function MainLayout({ user, onLogout }: MainLayoutProps) {
+export function MainLayout({ user, onLogout, onUserUpdate }: MainLayoutProps) {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -23,7 +24,7 @@ export function MainLayout({ user, onLogout }: MainLayoutProps) {
       case 'dashboard':
         return <Dashboard user={user} />;
       case 'profile':
-        return <Profile user={user} />;
+        return <Profile user={user} onUserUpdate={onUserUpdate} />;
       case 'assets':
         return <AssetManagement user={user} />;
       case 'taxes':

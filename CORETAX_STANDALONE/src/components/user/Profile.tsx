@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, MapPin, Calendar, CreditCard, Camera, Save, CheckCircle } from 'lucide-react';
 
 interface ProfileProps {
   user: any;
+  onUserUpdate: (user: any) => void;
 }
 
-export function Profile({ user }: ProfileProps) {
+export function Profile({ user, onUserUpdate }: ProfileProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: user.name,
@@ -15,13 +16,24 @@ export function Profile({ user }: ProfileProps) {
   });
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    setFormData({
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      address: user.address || '',
+    });
+  }, [user]);
+
   const handleSave = () => {
     const users = JSON.parse(localStorage.getItem('users') || '[]');
     const userIndex = users.findIndex((u: any) => u.id === user.id);
 
     if (userIndex !== -1) {
-      users[userIndex] = { ...users[userIndex], ...formData };
+      const updatedUser = { ...users[userIndex], ...formData };
+      users[userIndex] = updatedUser;
       localStorage.setItem('users', JSON.stringify(users));
+      onUserUpdate(updatedUser);
       
       setSuccess(true);
       setIsEditing(false);
@@ -39,9 +51,13 @@ export function Profile({ user }: ProfileProps) {
         const userIndex = users.findIndex((u: any) => u.id === user.id);
         
         if (userIndex !== -1) {
-          users[userIndex].profilePhoto = reader.result as string;
+          const updatedUser = {
+            ...users[userIndex],
+            profilePhoto: reader.result as string,
+          };
+          users[userIndex] = updatedUser;
           localStorage.setItem('users', JSON.stringify(users));
-          window.location.reload(); // Reload to show new photo
+          onUserUpdate(updatedUser);
         }
       };
       reader.readAsDataURL(file);

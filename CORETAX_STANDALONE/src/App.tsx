@@ -125,6 +125,10 @@ function App() {
     setAuthPage('login');
   };
 
+  const handleUserUpdate = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+  };
+
   if (!currentUser) {
     if (needs2FA && pendingUser) {
       return (
@@ -163,7 +167,13 @@ function App() {
     return <AdminLayout user={currentUser} onLogout={handleLogout} />;
   }
 
-  return <MainLayout user={currentUser} onLogout={handleLogout} />;
+  return (
+    <MainLayout
+      user={currentUser}
+      onLogout={handleLogout}
+      onUserUpdate={handleUserUpdate}
+    />
+  );
 }
 
 export default App;
