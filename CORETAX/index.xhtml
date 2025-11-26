@@ -1,14 +1,57 @@
-<!DOCTYPE html>
-<html lang="id">
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
   <head>
-    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CORETAX - Manajemen Aset dan Pajak</title>
-    <link rel="icon" type="image/x-icon" href="favicon.ico" />
-    <link rel="stylesheet" href="./assets/coretax.min.css" />
+    <title>CORETAX XHTML</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript">
+      /* Tailwind setup */
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui'],
+            },
+          },
+        },
+      };
+    </script>
+    <style type="text/css">
+      /* Global tweaks */
+      body {
+        font-family: 'Plus Jakarta Sans', 'ui-sans-serif', 'system-ui';
+      }
+      .scroll-area {
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+      }
+      .scroll-area::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      .scroll-area::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 9999px;
+      }
+      .scroll-area::-webkit-scrollbar-track {
+        background: transparent;
+      }
+    </style>
   </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./assets/coretax.min.js"></script>
+  <body class="bg-gray-50">
+    <div id="app" class="min-h-screen"></div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script type="text/javascript" src="./scripts/storage.js"></script>
+    <script type="text/javascript" src="./scripts/geolocation.js"></script>
+    <script type="text/javascript" src="./scripts/taxCalculation.js"></script>
+    <script type="text/javascript" src="./scripts/taxSync.js"></script>
+    <script type="text/javascript" src="./scripts/utils.js"></script>
+    <script type="text/javascript" src="./scripts/app.js"></script>
   </body>
 </html>

@@ -40,7 +40,7 @@ export function MainLayout({ user, onLogout, onUserUpdate }: MainLayoutProps) {
     <div className="min-h-screen bg-gray-50">
       {/* Mobile header */}
       <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-gray-900">Sistem PWD</h1>
+        <h1 className="text-gray-900">CORETAX</h1>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="p-2 hover:bg-gray-100 rounded-lg"

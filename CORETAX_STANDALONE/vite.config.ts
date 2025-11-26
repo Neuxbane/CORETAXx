@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 
-const outputDir = path.resolve(__dirname, '../CORETAX/assets');
+const outputDir = path.resolve(__dirname, '../CORETAX/public/app');
 
 export default defineConfig({
   plugins: [react()],

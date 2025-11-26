@@ -39,7 +39,7 @@ export function Sidebar({ user, currentPage, onPageChange, onLogout, isOpen, onC
           {/* Header */}
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h1 className="text-gray-900">Sistem PWD</h1>
+              <h1 className="text-gray-900">CORETAX</h1>
               <button
                 onClick={onClose}
                 className="lg:hidden p-1 hover:bg-gray-100 rounded"

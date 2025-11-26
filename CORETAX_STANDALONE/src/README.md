@@ -1,4 +1,4 @@
-# Sistem PWD (Penyandang Wajib Pajak Daerah)
+# CORETAX (Penyandang Wajib Pajak Daerah)
 
 Sistem manajemen pajak daerah berbasis web yang memungkinkan pengguna mengelola aset dan pembayaran pajak mereka.
 

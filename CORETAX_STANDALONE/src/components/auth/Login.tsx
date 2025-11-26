@@ -66,7 +66,7 @@ export function Login({ onSuccess, onRegisterClick, onForgotPasswordClick }: Log
             <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
               <LogIn className="w-8 h-8 text-blue-600" />
             </div>
-            <h1 className="text-gray-900 mb-2">Sistem PWD</h1>
+            <h1 className="text-gray-900 mb-2">CORETAX</h1>
             <p className="text-gray-600">Masuk ke akun Anda</p>
           </div>
 
