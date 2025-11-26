@@ -26,12 +26,20 @@ function setHTML(target, html) {
   }
 }
 
-function boot() {
-  window.storage.ensureDefaults();
+async function boot() {
+  if (window.sync && window.sync.init) {
+    window.sync.init();
+  }
+
+  await window.storage.ensureDefaults();
   window.taxSync.syncTaxRecordsWithAssets();
 
   const sessionId = window.storage.getSession();
   if (sessionId) {
+    if (window.sync && window.sync.pullSnapshot) {
+      await window.sync.pullSnapshot(sessionId);
+    }
+
     const users = window.storage.getUsers();
     const user = users.find((u) => u.id === sessionId);
     if (user && user.isActive) {
@@ -1445,7 +1453,7 @@ function renderUserSettings() {
   const errorText = wrap.querySelector('#settings-error-text');
   const successBox = wrap.querySelector('#settings-success');
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorBox.classList.add('hidden');
     successBox.classList.add('hidden');
@@ -1456,7 +1464,12 @@ function renderUserSettings() {
 
     const users = window.storage.getUsers();
     const current = users.find((u) => u.id === user.id);
-    if (!current || current.password !== oldPassword) {
+    if (!current) {
+      showSettingsError('Pengguna tidak ditemukan');
+      return;
+    }
+    const { matches } = await window.security.verifyPassword(current, oldPassword);
+    if (!matches) {
       showSettingsError('Password lama tidak sesuai');
       return;
     }
@@ -1472,7 +1485,7 @@ function renderUserSettings() {
       showSettingsError('Password baru harus berbeda dengan password lama');
       return;
     }
-    current.password = newPassword;
+    current.password = await window.security.hashPassword(newPassword);
     window.storage.setUsers(users);
     successBox.classList.remove('hidden');
     form.reset();
@@ -2781,11 +2794,20 @@ function renderLogin(container) {
     await window.utils.delay(500);
 
     const users = window.storage.getUsers();
-    const user = users.find(
-      (u) =>
-        (u.email === identifier || u.username === identifier) &&
-        u.password === password
-    );
+    const candidate = users.find((u) => u.email === identifier || u.username === identifier);
+    let user = null;
+
+    if (candidate) {
+      const { matches, normalizedUser } = await window.security.verifyPassword(candidate, password);
+      if (matches) {
+        user = normalizedUser;
+        // Persist migration to hashed password if needed
+        if (candidate !== normalizedUser) {
+          const updatedUsers = users.map((u) => (u.id === normalizedUser.id ? normalizedUser : u));
+          window.storage.setUsers(updatedUsers);
+        }
+      }
+    }
 
     if (!user) {
       errorText.textContent = 'Email/Username atau Password salah';
@@ -3023,7 +3045,7 @@ function renderRegister(container) {
       fullName: data.name,
       email: data.email,
       username: data.username,
-      password: data.password,
+      password: await window.security.hashPassword(data.password),
       nik: data.nik,
       dateOfBirth: data.dateOfBirth,
       role: 'user',
@@ -3196,7 +3218,7 @@ function renderForgot(container) {
       const users = window.storage.getUsers();
       const idx = users.findIndex((u) => u.email === targetEmail);
       if (idx !== -1) {
-        users[idx].password = newPass;
+        users[idx].password = await window.security.hashPassword(newPass);
         window.storage.setUsers(users);
       }
 
@@ -3338,7 +3360,15 @@ function renderTwoFactor(container) {
         state.currentUser = state.pendingUser;
         state.pendingUser = null;
         state.needs2FA = false;
-        render();
+        (async () => {
+          if (window.sync && window.sync.pullSnapshot && state.currentUser) {
+            await window.sync.pullSnapshot(state.currentUser.id);
+            // Refresh in-memory user with any server-updated data
+            const refreshed = window.storage.getUsers().find((u) => u.id === state.currentUser.id);
+            if (refreshed) state.currentUser = refreshed;
+          }
+          render();
+        })();
       } else {
         errorText.textContent = 'Kode verifikasi salah';
         errorBox.classList.remove('hidden');
@@ -3523,4 +3553,6 @@ function renderUserPage(container) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', boot);
+document.addEventListener('DOMContentLoaded', () => {
+  boot();
+});

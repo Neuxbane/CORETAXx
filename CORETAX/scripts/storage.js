@@ -9,9 +9,9 @@ const STORAGE_KEYS = {
   SESSION: 'sessionToken',
 };
 
-function ensureDefaults() {
+async function ensureDefaults() {
   if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
-    const demoUsers = [
+    const demoUsers = await window.security.ensureHashedUsers([
       {
         id: 'admin-1',
         name: 'Admin System',
@@ -25,8 +25,13 @@ function ensureDefaults() {
         isActive: true,
         createdAt: new Date().toISOString(),
       },
-    ];
+    ]);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(demoUsers));
+  } else {
+    // Migrate any existing plaintext passwords to hashed format
+    const users = read(STORAGE_KEYS.USERS, []);
+    const hashedUsers = await window.security.ensureHashedUsers(users);
+    write(STORAGE_KEYS.USERS, hashedUsers);
   }
 
   if (!localStorage.getItem(STORAGE_KEYS.ASSETS)) {
@@ -57,6 +62,9 @@ function read(key, fallback) {
 function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    if (window.sync && window.sync.recordChange) {
+      window.sync.recordChange(key, value);
+    }
   } catch (err) {
     console.error('Storage write error', key, err);
   }

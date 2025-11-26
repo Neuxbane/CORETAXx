@@ -4,7 +4,9 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
     <title>CORETAX XHTML</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet" />
@@ -47,11 +49,22 @@
     <div id="app" class="min-h-screen"></div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script type="text/javascript" src="./scripts/security.js"></script>
+    <script type="text/javascript" src="./scripts/syncService.js"></script>
     <script type="text/javascript" src="./scripts/storage.js"></script>
     <script type="text/javascript" src="./scripts/geolocation.js"></script>
     <script type="text/javascript" src="./scripts/taxCalculation.js"></script>
     <script type="text/javascript" src="./scripts/taxSync.js"></script>
     <script type="text/javascript" src="./scripts/utils.js"></script>
     <script type="text/javascript" src="./scripts/app.js"></script>
+    <script type="text/javascript">
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('./service-worker.js').catch(function (err) {
+            console.warn('Service worker registration failed', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
