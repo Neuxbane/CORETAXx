@@ -395,7 +395,7 @@ function renderAdminUsers() {
   wrap.innerHTML = `
     <div>
       <h1 class="text-gray-900 text-xl font-semibold mb-2">Manajemen Pengguna</h1>
-      <p class="text-gray-600">Kelola pengguna sistem PWD</p>
+      <p class="text-gray-600">Kelola pengguna sistem</p>
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
       <div class="relative">

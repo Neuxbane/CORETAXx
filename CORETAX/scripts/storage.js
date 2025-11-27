@@ -16,7 +16,7 @@ async function ensureDefaults() {
         id: 'admin-1',
         name: 'Admin System',
         fullName: 'Admin System',
-        email: 'admin@pwd.go.id',
+        email: 'admin@coretax.go.id',
         username: 'admin',
         password: 'admin123',
         nik: '0000000000000000',
