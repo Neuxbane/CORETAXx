@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserPlus, Mail, Lock, User, Calendar, CreditCard, AlertCircle, CheckCircle } from 'lucide-react';
+import VerifyEmail from './VerifyEmail';
 
 interface RegisterProps {
   onBackToLogin: () => void;
@@ -20,6 +21,7 @@ export function Register({ onBackToLogin }: RegisterProps) {
   const [loading, setLoading] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
+  const [pendingVerifyEmail, setPendingVerifyEmail] = useState<string | null>(null);
 
   const checkAvailability = (field: 'email' | 'username', value: string) => {
     if (!value) {
@@ -91,20 +93,19 @@ export function Register({ onBackToLogin }: RegisterProps) {
         nik: formData.nik,
         dateOfBirth: formData.dateOfBirth,
         role: 'user',
-        isActive: true, // In real app, this would be false until email verification
+        isActive: false, // Not active until email verification
         createdAt: new Date().toISOString(),
       };
 
       users.push(newUser);
       localStorage.setItem('users', JSON.stringify(users));
 
-      setSuccess(true);
+      // Instead of immediate success, show the verify email step
+      setPendingVerifyEmail(newUser.email);
+      setSuccess(false);
       setLoading(false);
 
-      // Redirect to login after 2 seconds
-      setTimeout(() => {
-        onBackToLogin();
-      }, 2000);
+      // keep on the verification component
     }, 500);
   };
 
@@ -126,6 +127,29 @@ export function Register({ onBackToLogin }: RegisterProps) {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (pendingVerifyEmail) {
+    return (
+      <VerifyEmail
+        email={pendingVerifyEmail}
+        onVerified={() => {
+          // mark user as active in localStorage
+          const users = JSON.parse(localStorage.getItem('users') || '[]');
+          const idx = users.findIndex((u: any) => u.email === pendingVerifyEmail);
+          if (idx !== -1) {
+            users[idx].isActive = true;
+            localStorage.setItem('users', JSON.stringify(users));
+          }
+          setPendingVerifyEmail(null);
+          setSuccess(true);
+          setTimeout(() => {
+            onBackToLogin();
+          }, 1000);
+        }}
+        onCancel={() => setPendingVerifyEmail(null)}
+      />
     );
   }
 

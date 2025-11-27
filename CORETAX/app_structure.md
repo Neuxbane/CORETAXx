@@ -13,6 +13,14 @@ This document captures the full UI/UX, flows, and data behaviors from `CORETAX_S
 - **Forgot Password**: Step 1 collect email, generate token (displayed inline), step 2 verify token + new password + confirm. Success screen with CTA back to login.
 - **Two-Factor Auth**: 6-digit code input grid with paste/auto-advance; code displayed inline (simulated email). Error resets inputs; resend link (UI only).
 
+### Email OTP Endpoint
+
+- Add server endpoints under `CORETAX/api/otp.php` supporting:
+  - `action=send` (POST { email }) — generates and emails a 6-digit OTP, stores a hashed token and expiry in `CORETAX/data/otp/{email}.json` with rate-limiting.
+  - `action=verify` (POST { email, code }) — verifies the code, respects attempt limits, and removes the OTP on success.
+
+For development, emails are logged to `CORETAX/data/mail_logs/*.json` if `mail()` is not available.
+
 ## User Application Layout
 - Shell: mobile header with menu toggle; persistent sidebar (Dashboard, Data Diri, Data Kepemilikan, Pajak, Pengaturan), profile badge, logout.
 - Pages:

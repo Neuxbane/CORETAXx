@@ -9,3 +9,13 @@
 
   Run `npm run dev` to start the development server.
   
+  OTP via Email
+  -------------
+  This project includes a simple OTP email verification integration for in-browser registration flows.
+  Ensure the backend `CORETAX/api/otp.php` is reachable from the frontend (e.g., same domain or via proxy). Default endpoints:
+  - POST `/CORETAX/api/otp.php?action=send` -- body: { email }
+  - POST `/CORETAX/api/otp.php?action=verify` -- body: { email, code }
+
+  For local development where PHP's `mail()` is not configured, the OTP is logged in `CORETAX/data/mail_logs/*`.
+
+  

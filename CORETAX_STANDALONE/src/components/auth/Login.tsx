@@ -160,6 +160,42 @@ export function Login({ onSuccess, onRegisterClick, onForgotPasswordClick }: Log
               Demo: admin / admin123
             </p>
           </div>
+          {error === 'Akun Anda belum diaktivasi. Silakan cek email Anda.' && (
+            <div className="mt-4 text-center">
+              <button
+                onClick={async () => {
+                  setLoading(true);
+                  setError('');
+                  const users = JSON.parse(localStorage.getItem('users') || '[]');
+                  const user = users.find((u: any) => u.email === identifier || u.username === identifier);
+                  if (!user) {
+                    setError('Akun tidak ditemukan');
+                    setLoading(false);
+                    return;
+                  }
+                  try {
+                    const res = await fetch('/CORETAX/api/otp.php?action=send', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: user.email }),
+                    });
+                    if (res.ok) {
+                      setError('Kode verifikasi telah dikirim ulang ke email Anda.');
+                    } else {
+                      const d = await res.json();
+                      setError(d.error || 'Gagal mengirim ulang');
+                    }
+                  } catch (err) {
+                    setError('Gagal mengirim ulang');
+                  }
+                  setLoading(false);
+                }}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                Kirim Ulang Kode Verifikasi
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
