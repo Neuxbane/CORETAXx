@@ -10,6 +10,7 @@ const API_BASE = '/api';
 const AUTH_ENDPOINT = `${API_BASE}/auth.php`;
 const USERS_ENDPOINT = `${API_BASE}/users.php`;
 const SYNC_ENDPOINT = `${API_BASE}/sync.php`;
+const FILES_ENDPOINT = `${API_BASE}/files.php`;
 
 // ========== Token Management ==========
 function getAuthToken() {
@@ -446,6 +447,64 @@ async function pushAllData() {
   }
 }
 
+// ========== File Upload API ==========
+async function uploadFile(file, type = 'image', assetId = null) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', type);
+  if (assetId) formData.append('assetId', assetId);
+  
+  const response = await fetch(`${FILES_ENDPOINT}?action=upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  });
+  
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Upload failed');
+  }
+  return data;
+}
+
+async function uploadBase64(base64Data, name, type = 'image', assetId = null) {
+  return await apiRequest(`${FILES_ENDPOINT}?action=upload-base64`, {
+    method: 'POST',
+    body: JSON.stringify({ data: base64Data, name, type, assetId }),
+  });
+}
+
+async function uploadBulk(files, assetId = null) {
+  return await apiRequest(`${FILES_ENDPOINT}?action=upload-bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ files, assetId }),
+  });
+}
+
+async function listFiles(assetId = null, type = null) {
+  let url = `${FILES_ENDPOINT}?action=list`;
+  if (assetId) url += `&assetId=${encodeURIComponent(assetId)}`;
+  if (type) url += `&type=${encodeURIComponent(type)}`;
+  return await apiRequest(url);
+}
+
+async function deleteFile(fileId) {
+  return await apiRequest(`${FILES_ENDPOINT}?action=delete&id=${encodeURIComponent(fileId)}`, {
+    method: 'POST',
+  });
+}
+
+function getFileUrl(fileId) {
+  return `${FILES_ENDPOINT}?action=download&id=${encodeURIComponent(fileId)}`;
+}
+
 // ========== Export ==========
 window.sync = {
   // Queue management
@@ -489,6 +548,14 @@ window.sync = {
   getAllLocations,
   getAllAssets,
   getAllTransactions,
+  
+  // Files
+  uploadFile,
+  uploadBase64,
+  uploadBulk,
+  listFiles,
+  deleteFile,
+  getFileUrl,
   
   // Helper
   apiRequest,

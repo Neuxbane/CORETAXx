@@ -10,11 +10,12 @@ $dataDir = __DIR__ . '/data';
 $usersDir = $dataDir . '/users';
 $sessionsDir = $dataDir . '/sessions';
 $userDataDir = $dataDir . '/userdata';
+$uploadsDir = $dataDir . '/uploads';
 $otpDir = $dataDir . '/otp';
 $mailLogsDir = $dataDir . '/mail_logs';
 
 // Create directories
-$dirs = [$dataDir, $usersDir, $sessionsDir, $userDataDir, $otpDir, $mailLogsDir];
+$dirs = [$dataDir, $usersDir, $sessionsDir, $userDataDir, $uploadsDir, $otpDir, $mailLogsDir];
 foreach ($dirs as $dir) {
     if (!is_dir($dir)) {
         mkdir($dir, 0775, true);

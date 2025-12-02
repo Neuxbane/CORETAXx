@@ -1873,14 +1873,35 @@ function renderUserAssets() {
                   <p class="text-gray-500 text-sm mb-2">Diperoleh: ${window.utils.formatDate(asset.acquisitionDate)}</p>
                   ${
                     asset.photos && asset.photos.length > 0
-                      ? `<div class="relative mb-3">
-                          <img data-slider-main src="${h(asset.photos[0].data)}" class="w-full h-32 object-cover rounded-lg border border-gray-200" />
+                      ? `<div class="relative mb-3 group" data-asset-carousel="${asset.id}">
+                          <div class="overflow-hidden rounded-lg border border-gray-200">
+                            <img data-slider-main src="${h(asset.photos[0].url || asset.photos[0].data)}" alt="${h(asset.photos[0].name || 'Photo')}" class="w-full h-40 object-cover transition-transform duration-300" />
+                          </div>
                           ${
                             asset.photos.length > 1
-                              ? `<button data-slider-prev class="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-700 rounded-full p-1 shadow">${iconBack('w-4 h-4')}</button>
-                                 <button data-slider-next class="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-700 rounded-full p-1 shadow rotate-180">${iconBack('w-4 h-4')}</button>`
+                              ? `<div class="absolute inset-0 flex items-center justify-between px-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                   <button data-slider-prev class="bg-black/50 hover:bg-black/70 text-white rounded-full p-2 shadow-lg backdrop-blur-sm transition-all">${iconBack('w-5 h-5')}</button>
+                                   <button data-slider-next class="bg-black/50 hover:bg-black/70 text-white rounded-full p-2 shadow-lg backdrop-blur-sm transition-all rotate-180">${iconBack('w-5 h-5')}</button>
+                                 </div>
+                                 <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5" data-slider-dots>
+                                   ${asset.photos.map((_, i) => `<span class="w-2 h-2 rounded-full ${i === 0 ? 'bg-white' : 'bg-white/50'} transition-all"></span>`).join('')}
+                                 </div>
+                                 <div class="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                                   <span data-slider-current>1</span>/${asset.photos.length}
+                                 </div>`
                               : ''
                           }
+                        </div>`
+                      : ''
+                  }
+                  ${
+                    asset.attachments && asset.attachments.length > 0
+                      ? `<div class="mb-3 flex flex-wrap gap-2">
+                          ${asset.attachments.map(att => `
+                            <a href="${h(att.url || att.data)}" target="_blank" class="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100 transition-colors">
+                              ${iconFile('w-3 h-3')}${h(att.name || 'Document')}
+                            </a>
+                          `).join('')}
                         </div>`
                       : ''
                   }
@@ -1925,20 +1946,72 @@ function renderUserAssets() {
     });
 
     // Attach simple slider controls
-    listContainer.querySelectorAll('[data-slider-main]').forEach((imgEl) => {
-      const card = imgEl.closest('.bg-white');
-      if (!card) return;
-      const assetId = (card.querySelector('[data-edit]') || {}).getAttribute('data-edit');
+    listContainer.querySelectorAll('[data-asset-carousel]').forEach((carouselEl) => {
+      const assetId = carouselEl.getAttribute('data-asset-carousel');
       const asset = assets.find((a) => a.id === assetId);
       if (!asset || !asset.photos || asset.photos.length <= 1) return;
+      
+      const imgEl = carouselEl.querySelector('[data-slider-main]');
+      const dotsContainer = carouselEl.querySelector('[data-slider-dots]');
+      const currentSpan = carouselEl.querySelector('[data-slider-current]');
+      const dots = dotsContainer ? Array.from(dotsContainer.children) : [];
+      
       let idx = 0;
+      
       const updateImg = () => {
-        imgEl.src = asset.photos[idx].data;
+        const photo = asset.photos[idx];
+        imgEl.src = photo.url || photo.data;
+        imgEl.alt = photo.name || 'Photo';
+        if (currentSpan) currentSpan.textContent = idx + 1;
+        dots.forEach((dot, i) => {
+          dot.className = `w-2 h-2 rounded-full ${i === idx ? 'bg-white' : 'bg-white/50'} transition-all`;
+        });
       };
-      const prev = card.querySelector('[data-slider-prev]');
-      const next = card.querySelector('[data-slider-next]');
-      if (prev) prev.addEventListener('click', () => { idx = (idx - 1 + asset.photos.length) % asset.photos.length; updateImg(); });
-      if (next) next.addEventListener('click', () => { idx = (idx + 1) % asset.photos.length; updateImg(); });
+      
+      const prev = carouselEl.querySelector('[data-slider-prev]');
+      const next = carouselEl.querySelector('[data-slider-next]');
+      
+      if (prev) prev.addEventListener('click', (e) => { 
+        e.stopPropagation();
+        idx = (idx - 1 + asset.photos.length) % asset.photos.length; 
+        updateImg(); 
+      });
+      if (next) next.addEventListener('click', (e) => { 
+        e.stopPropagation();
+        idx = (idx + 1) % asset.photos.length; 
+        updateImg(); 
+      });
+      
+      // Click on dots to navigate
+      dots.forEach((dot, i) => {
+        dot.style.cursor = 'pointer';
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          idx = i;
+          updateImg();
+        });
+      });
+      
+      // Swipe support for mobile
+      let touchStartX = 0;
+      let touchEndX = 0;
+      
+      carouselEl.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      
+      carouselEl.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        const diff = touchStartX - touchEndX;
+        if (Math.abs(diff) > 50) {
+          if (diff > 0) {
+            idx = (idx + 1) % asset.photos.length;
+          } else {
+            idx = (idx - 1 + asset.photos.length) % asset.photos.length;
+          }
+          updateImg();
+        }
+      }, { passive: true });
     });
   }
 
@@ -2319,14 +2392,28 @@ function renderUserAssets() {
                 <p class="text-gray-500 text-xs">PDF Document</p>
               </div>
             </div>
-            <button data-remove-att="${idx}" class="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors">${iconClose('w-4 h-4')}</button>
+            <div class="flex items-center gap-2">
+              ${att.url ? `<a href="${h(att.url)}" target="_blank" class="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors" title="Open">${iconEye('w-4 h-4')}</a>` : ''}
+              <button data-remove-att="${idx}" class="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors">${iconClose('w-4 h-4')}</button>
+            </div>
           </div>
         `
           )
           .join('');
         attList.querySelectorAll('[data-remove-att]').forEach((btn) => {
-          btn.addEventListener('click', () => {
+          btn.addEventListener('click', async () => {
             const idx = Number(btn.getAttribute('data-remove-att'));
+            const att = formData.attachments[idx];
+            
+            // Try to delete from server if it has an ID
+            if (att.id && window.sync.getAuthToken()) {
+              try {
+                await window.sync.deleteFile(att.id);
+              } catch (err) {
+                console.warn('Failed to delete file from server', err);
+              }
+            }
+            
             formData.attachments.splice(idx, 1);
             renderAtt();
           });
@@ -2338,7 +2425,7 @@ function renderUserAssets() {
           .map(
             (photo, idx) => `
           <div class="relative group">
-            <img src="${h(photo.data)}" alt="${h(photo.name)}" class="w-full h-24 object-cover rounded-lg border border-gray-200" />
+            <img src="${h(photo.url || photo.data)}" alt="${h(photo.name)}" class="w-full h-24 object-cover rounded-lg border border-gray-200" />
             <button data-remove-photo="${idx}" class="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity">${iconClose('w-3 h-3')}</button>
             <p class="mt-1 text-xs text-gray-600 truncate">${h(photo.name)}</p>
           </div>
@@ -2346,8 +2433,19 @@ function renderUserAssets() {
           )
           .join('');
         photoList.querySelectorAll('[data-remove-photo]').forEach((btn) => {
-          btn.addEventListener('click', () => {
+          btn.addEventListener('click', async () => {
             const idx = Number(btn.getAttribute('data-remove-photo'));
+            const photo = formData.photos[idx];
+            
+            // Try to delete from server if it has an ID
+            if (photo.id && window.sync.getAuthToken()) {
+              try {
+                await window.sync.deleteFile(photo.id);
+              } catch (err) {
+                console.warn('Failed to delete file from server', err);
+              }
+            }
+            
             formData.photos.splice(idx, 1);
             renderPhotos();
           });
@@ -2446,12 +2544,77 @@ function renderUserAssets() {
     }
 
     const saveBtn = modalContainer.querySelector('#asset-save');
-    saveBtn.addEventListener('click', () => {
+    saveBtn.addEventListener('click', async () => {
       if (!formData.assetType || !formData.assetName || !formData.acquisitionValue || !formData.acquisitionDate) {
         alert('Lengkapi data wajib.');
         return;
       }
+      
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '${iconSave('w-4 h-4')}Menyimpan...';
+      
       const taxCalc = updateTaxPreview() || { totalRate: 0, taxAmount: 0 };
+      const assetId = asset ? asset.id : 'asset-' + Date.now();
+      
+      // Upload new files to server if authenticated
+      const token = window.sync.getAuthToken();
+      if (token) {
+        try {
+          // Upload photos that are still base64
+          const photosToUpload = formData.photos.filter(p => p.data && p.data.startsWith('data:'));
+          if (photosToUpload.length > 0) {
+            const uploadResult = await window.sync.uploadBulk(
+              photosToUpload.map(p => ({ data: p.data, name: p.name, type: 'image' })),
+              assetId
+            );
+            
+            if (uploadResult.success && uploadResult.files) {
+              // Replace base64 data with server URLs
+              uploadResult.files.forEach((uploaded, idx) => {
+                if (uploaded.success && uploaded.url) {
+                  const originalIdx = formData.photos.findIndex(p => p.name === uploaded.name && p.data && p.data.startsWith('data:'));
+                  if (originalIdx !== -1) {
+                    formData.photos[originalIdx] = {
+                      id: uploaded.id,
+                      name: uploaded.name,
+                      url: uploaded.url,
+                      type: 'image',
+                    };
+                  }
+                }
+              });
+            }
+          }
+          
+          // Upload attachments that are still base64
+          const attsToUpload = formData.attachments.filter(a => a.data && a.data.startsWith('data:'));
+          if (attsToUpload.length > 0) {
+            const attResult = await window.sync.uploadBulk(
+              attsToUpload.map(a => ({ data: a.data, name: a.name, type: 'document' })),
+              assetId
+            );
+            
+            if (attResult.success && attResult.files) {
+              attResult.files.forEach((uploaded, idx) => {
+                if (uploaded.success && uploaded.url) {
+                  const originalIdx = formData.attachments.findIndex(a => a.name === uploaded.name && a.data && a.data.startsWith('data:'));
+                  if (originalIdx !== -1) {
+                    formData.attachments[originalIdx] = {
+                      id: uploaded.id,
+                      name: uploaded.name,
+                      url: uploaded.url,
+                      type: 'document',
+                    };
+                  }
+                }
+              });
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('File upload failed, keeping base64 data', uploadErr);
+        }
+      }
+      
       const allAssets = window.storage.getAssets();
       if (asset) {
         const idx = allAssets.findIndex((a) => a.id === asset.id);
@@ -2467,7 +2630,7 @@ function renderUserAssets() {
         }
       } else {
         const newAsset = {
-          id: 'asset-' + Date.now(),
+          id: assetId,
           userId: state.currentUser.id,
           ...formData,
           acquisitionValue: Number(formData.acquisitionValue),
