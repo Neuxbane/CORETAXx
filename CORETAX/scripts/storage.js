@@ -62,7 +62,9 @@ function read(key, fallback) {
 function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    if (window.sync && window.sync.recordChange) {
+    // Don't sync 'users' key - user accounts are managed by auth.php
+    // Only sync user-specific data like assets, taxes, transactions
+    if (window.sync && window.sync.recordChange && key !== STORAGE_KEYS.USERS) {
       window.sync.recordChange(key, value);
     }
   } catch (err) {

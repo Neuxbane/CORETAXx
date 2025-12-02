@@ -34,6 +34,37 @@ async function boot() {
   await window.storage.ensureDefaults();
   window.taxSync.syncTaxRecordsWithAssets();
 
+  // Check for existing auth token first
+  if (window.sync && window.sync.getAuthToken && window.sync.getAuthToken()) {
+    try {
+      const user = await window.sync.verifySession();
+      if (user && user.isActive) {
+        state.currentUser = user;
+        window.storage.setSession(user.id);
+        
+        // Sync data from server
+        await window.sync.pullSnapshot();
+        
+        // Update local user data
+        const users = window.storage.getUsers();
+        const existingIndex = users.findIndex(u => u.id === user.id);
+        if (existingIndex >= 0) {
+          users[existingIndex] = { ...users[existingIndex], ...user };
+        } else {
+          users.push(user);
+        }
+        window.storage.setUsers(users);
+        
+        render();
+        return;
+      }
+    } catch (err) {
+      console.warn('Auth token verification failed', err);
+      window.sync.clearAuth();
+    }
+  }
+
+  // Fallback to legacy session check
   const sessionId = window.storage.getSession();
   if (sessionId) {
     if (window.sync && window.sync.pullSnapshot) {
@@ -234,7 +265,15 @@ function renderAdminLayout(container) {
     });
   });
 
-  logoutBtn.addEventListener('click', () => {
+  logoutBtn.addEventListener('click', async () => {
+    // Logout from API
+    if (window.sync && window.sync.logout) {
+      try {
+        await window.sync.logout();
+      } catch (err) {
+        console.warn('API logout failed', err);
+      }
+    }
     window.storage.clearSession();
     state.currentUser = null;
     state.authPage = 'login';
@@ -2791,8 +2830,49 @@ function renderLogin(container) {
       warningBox.classList.remove('hidden');
     }
 
-    await window.utils.delay(500);
+    await window.utils.delay(300);
 
+    // Try to login via API first
+    try {
+      const response = await window.sync.login(identifier, password, location);
+      if (response.success && response.user) {
+        // API login successful
+        const user = response.user;
+        
+        // Also save to local storage for offline access
+        const users = window.storage.getUsers();
+        const existingIndex = users.findIndex(u => u.id === user.id);
+        if (existingIndex >= 0) {
+          users[existingIndex] = { ...users[existingIndex], ...user };
+        } else {
+          users.push(user);
+        }
+        window.storage.setUsers(users);
+        
+        if (location) {
+          window.geo.saveUserLocation(user.id, location, 'login');
+          // Also sync location to server
+          try {
+            await window.sync.updateLocation(location);
+          } catch (locErr) {
+            console.warn('Failed to sync location', locErr);
+          }
+        }
+
+        state.pendingUser = user;
+        state.needs2FA = true;
+        state.twoFactorCode = generate2faCode();
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Masuk';
+        render();
+        return;
+      }
+    } catch (apiErr) {
+      console.warn('API login failed, falling back to local auth', apiErr);
+      // Fall through to local authentication
+    }
+
+    // Fallback to local authentication
     const users = window.storage.getUsers();
     const candidate = users.find((u) => u.email === identifier || u.username === identifier);
     let user = null;
@@ -2999,7 +3079,7 @@ function renderRegister(container) {
     const data = {
       name: (fd.get('name') || '').toString().trim(),
       email: (fd.get('email') || '').toString().trim(),
-      username: (fd.get('username') || '').toString().trim(),
+      username: (fd.get('username') || '').toString().trim().toLowerCase(),
       password: (fd.get('password') || '').toString(),
       confirmPassword: (fd.get('confirmPassword') || '').toString(),
       nik: (fd.get('nik') || '').toString().replace(/\D/g, '').slice(0, 16),
@@ -3011,18 +3091,13 @@ function renderRegister(container) {
     if (!data.email) errors.email = 'Email harus diisi';
     else if (!/\S+@\S+\.\S+/.test(data.email)) errors.email = 'Format email tidak valid';
     if (!data.username) errors.username = 'Username harus diisi';
+    else if (data.username.length < 3) errors.username = 'Username minimal 3 karakter';
     if (!data.password) errors.password = 'Password harus diisi';
     else if (data.password.length < 6) errors.password = 'Password minimal 6 karakter';
     if (data.password !== data.confirmPassword) errors.confirmPassword = 'Password tidak cocok';
     if (!data.nik) errors.nik = 'NIK harus diisi';
     else if (data.nik.length !== 16) errors.nik = 'NIK harus 16 digit';
     if (!data.dateOfBirth) errors.dateOfBirth = 'Tanggal lahir harus diisi';
-
-    const latestUsers = window.storage.getUsers();
-    const emailExists = latestUsers.some((u) => u.email === data.email);
-    const usernameExists = latestUsers.some((u) => u.username === data.username);
-    if (emailExists) errors.email = 'Email sudah terdaftar';
-    if (usernameExists) errors.username = 'Username sudah digunakan';
 
     if (Object.keys(errors).length > 0) {
       Object.keys(errors).forEach((key) => {
@@ -3037,7 +3112,74 @@ function renderRegister(container) {
     submit.disabled = true;
     submit.textContent = 'Memproses...';
 
-    await window.utils.delay(500);
+    // Try API registration first
+    try {
+      const response = await window.sync.register({
+        name: data.name,
+        email: data.email,
+        username: data.username,
+        password: data.password,
+        nik: data.nik,
+        dateOfBirth: data.dateOfBirth,
+      });
+      
+      if (response.success && response.user) {
+        // User is already saved on server via auth.php
+        // Don't add to local users array - it will be synced on login
+        
+        successBox.classList.remove('hidden');
+        submit.disabled = true;
+        submit.textContent = 'Berhasil';
+
+        setTimeout(() => {
+          state.authPage = 'login';
+          render();
+        }, 2000);
+        return;
+      }
+    } catch (apiErr) {
+      console.warn('API registration failed', apiErr);
+      // Check for specific errors
+      if (apiErr.data && apiErr.data.error) {
+        const errorMsg = apiErr.data.error.toLowerCase();
+        if (errorMsg.includes('email')) {
+          errorEls.email.textContent = apiErr.data.error;
+          errorEls.email.classList.remove('hidden');
+        } else if (errorMsg.includes('username')) {
+          errorEls.username.textContent = apiErr.data.error;
+          errorEls.username.classList.remove('hidden');
+        } else {
+          // Show general error
+          errorEls.name.textContent = apiErr.data.error;
+          errorEls.name.classList.remove('hidden');
+        }
+        submit.disabled = false;
+        submit.textContent = 'Daftar';
+        return;
+      }
+      // Fall through to local registration if API not available
+    }
+
+    // Fallback to local registration
+    const latestUsers = window.storage.getUsers();
+    const emailExists = latestUsers.some((u) => u.email === data.email);
+    const usernameExists = latestUsers.some((u) => u.username === data.username);
+    if (emailExists) {
+      errorEls.email.textContent = 'Email sudah terdaftar';
+      errorEls.email.classList.remove('hidden');
+      submit.disabled = false;
+      submit.textContent = 'Daftar';
+      return;
+    }
+    if (usernameExists) {
+      errorEls.username.textContent = 'Username sudah digunakan';
+      errorEls.username.classList.remove('hidden');
+      submit.disabled = false;
+      submit.textContent = 'Daftar';
+      return;
+    }
+
+    await window.utils.delay(300);
 
     const newUser = {
       id: generateUserId(),
@@ -3164,7 +3306,39 @@ function renderForgot(container) {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Memproses...';
 
-    await window.utils.delay(500);
+      // Try API first
+      try {
+        const response = await window.sync.forgotPassword(email);
+        if (response.success) {
+          generatedToken = response.devToken || ''; // For dev only
+          targetEmail = email;
+          if (generatedToken) {
+            tokenValue.textContent = generatedToken;
+            tokenBox.classList.remove('hidden');
+          }
+          emailStep.classList.add('hidden');
+          resetStep.classList.remove('hidden');
+          submitBtn.textContent = 'Reset Password';
+          submitBtn.disabled = false;
+          step = 'reset';
+          title.textContent = 'Reset Password';
+          subtitle.textContent = 'Masukkan token dan password baru Anda';
+          return;
+        }
+      } catch (apiErr) {
+        console.warn('API forgot password failed', apiErr);
+        if (apiErr.data && apiErr.data.error) {
+          errorText.textContent = apiErr.data.error;
+          errorBox.classList.remove('hidden');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Kirim Link Reset';
+          return;
+        }
+        // Fall through to local check
+      }
+
+      // Fallback to local check
+      await window.utils.delay(300);
       const users = window.storage.getUsers();
       const user = users.find((u) => u.email === email);
       if (!user) {
@@ -3195,11 +3369,6 @@ function renderForgot(container) {
       const newPass = (fd.get('newPassword') || '').toString();
       const confirmPass = (fd.get('confirmPassword') || '').toString();
 
-      if (token !== generatedToken) {
-        errorText.textContent = 'Token tidak valid';
-        errorBox.classList.remove('hidden');
-        return;
-      }
       if (newPass.length < 6) {
         errorText.textContent = 'Password minimal 6 karakter';
         errorBox.classList.remove('hidden');
@@ -3213,7 +3382,36 @@ function renderForgot(container) {
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Memproses...';
-      await window.utils.delay(500);
+
+      // Try API reset first
+      try {
+        const response = await window.sync.resetPassword(targetEmail, token, newPass);
+        if (response.success) {
+          showResetSuccess();
+          return;
+        }
+      } catch (apiErr) {
+        console.warn('API reset password failed', apiErr);
+        if (apiErr.data && apiErr.data.error) {
+          errorText.textContent = apiErr.data.error;
+          errorBox.classList.remove('hidden');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Reset Password';
+          return;
+        }
+        // Fall through to local reset
+      }
+
+      // Fallback to local reset
+      if (token !== generatedToken) {
+        errorText.textContent = 'Token tidak valid';
+        errorBox.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Reset Password';
+        return;
+      }
+
+      await window.utils.delay(300);
 
       const users = window.storage.getUsers();
       const idx = users.findIndex((u) => u.email === targetEmail);
@@ -3222,28 +3420,32 @@ function renderForgot(container) {
         window.storage.setUsers(users);
       }
 
-      // Success screen
-      wrapper.innerHTML = `
-        <div class="w-full max-w-md mx-auto">
-          <div class="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 class="text-gray-900 mb-2">Password Berhasil Direset!</h2>
-            <p class="text-gray-600 mb-6">Password Anda telah berhasil diubah. Silakan login dengan password baru.</p>
-            <button id="back-login" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors">Kembali ke Login</button>
-          </div>
-        </div>
-      `;
-
-      wrapper.querySelector('#back-login').addEventListener('click', () => {
-        state.authPage = 'login';
-        render();
-      });
+      showResetSuccess();
     }
   });
+
+  function showResetSuccess() {
+    // Success screen
+    wrapper.innerHTML = `
+      <div class="w-full max-w-md mx-auto">
+        <div class="bg-white rounded-2xl shadow-xl p-8 text-center">
+          <div class="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 class="text-gray-900 mb-2">Password Berhasil Direset!</h2>
+          <p class="text-gray-600 mb-6">Password Anda telah berhasil diubah. Silakan login dengan password baru.</p>
+          <button id="back-login" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors">Kembali ke Login</button>
+        </div>
+      </div>
+    `;
+
+    wrapper.querySelector('#back-login').addEventListener('click', () => {
+      state.authPage = 'login';
+      render();
+    });
+  }
 }
 
 function renderTwoFactor(container) {
@@ -3361,12 +3563,24 @@ function renderTwoFactor(container) {
         state.pendingUser = null;
         state.needs2FA = false;
         (async () => {
-          if (window.sync && window.sync.pullSnapshot && state.currentUser) {
+          // Pull user data from server if authenticated
+          if (window.sync && window.sync.getAuthToken && window.sync.getAuthToken()) {
+            try {
+              await window.sync.pullSnapshot();
+              // Also push any local data that might not be synced
+              await window.sync.pushAllData();
+            } catch (err) {
+              console.warn('Post-login sync error', err);
+            }
+          } else if (window.sync && window.sync.pullSnapshot && state.currentUser) {
+            // Fallback to legacy sync
             await window.sync.pullSnapshot(state.currentUser.id);
-            // Refresh in-memory user with any server-updated data
-            const refreshed = window.storage.getUsers().find((u) => u.id === state.currentUser.id);
-            if (refreshed) state.currentUser = refreshed;
           }
+          
+          // Refresh in-memory user with any server-updated data
+          const refreshed = window.storage.getUsers().find((u) => u.id === state.currentUser.id);
+          if (refreshed) state.currentUser = refreshed;
+          
           render();
         })();
       } else {
@@ -3463,7 +3677,15 @@ function renderUserLayout(container) {
     });
   });
 
-  logoutBtn.addEventListener('click', () => {
+  logoutBtn.addEventListener('click', async () => {
+    // Logout from API
+    if (window.sync && window.sync.logout) {
+      try {
+        await window.sync.logout();
+      } catch (err) {
+        console.warn('API logout failed', err);
+      }
+    }
     window.storage.clearSession();
     state.currentUser = null;
     state.authPage = 'login';
