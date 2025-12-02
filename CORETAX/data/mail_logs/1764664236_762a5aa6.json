@@ -1,0 +1,15 @@
+{
+    "to": "neuxbane@gmail.com",
+    "subject": "CORETAX: Kode Verifikasi Anda",
+    "timestamp": "2025-12-02T08:30:35+00:00",
+    "provider": "mailtrap",
+    "http_code": 200,
+    "response": {
+        "success": true,
+        "message_ids": [
+            "2d382aa0-cf59-11f0-0040-f1f7a511e33a"
+        ]
+    },
+    "method": "mailtrap_api",
+    "mail_result": true
+}

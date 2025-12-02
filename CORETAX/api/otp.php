@@ -82,14 +82,9 @@ if ($method === 'POST' && isset($_GET['action']) && $_GET['action'] === 'send') 
 
     write_otp_record($emailKey, $newRecord);
 
-    // Compose email
-    $subject = "CORETAX: Kode Verifikasi Anda";
-    $message = "<p>Terima kasih telah mendaftar di CORETAX.</p>" .
-        "<p>Kode verifikasi Anda adalah: <strong>$code</strong></p>" .
-        "<p>Kode ini berlaku selama " . ($expiresIn / 60) . " menit.</p>" .
-        "<p>Jika Anda tidak melakukan permintaan ini, abaikan email ini.</p>";
-
-    $sent = send_email($email, $subject, $message);
+    // Send OTP email using the new helper
+    $name = $payload['name'] ?? 'User';
+    $sent = send_otp_email($email, $code, $name);
     // Even if mail fails, we still keep the code server side; in dev, we log messages in data/mail_logs
 
     echo json_encode(['status' => 'ok', 'email' => $email, 'sent' => (bool)$sent]);

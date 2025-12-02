@@ -11,6 +11,7 @@ const AUTH_ENDPOINT = `${API_BASE}/auth.php`;
 const USERS_ENDPOINT = `${API_BASE}/users.php`;
 const SYNC_ENDPOINT = `${API_BASE}/sync.php`;
 const FILES_ENDPOINT = `${API_BASE}/files.php`;
+const OTP_ENDPOINT = `${API_BASE}/otp.php`;
 
 // ========== Token Management ==========
 function getAuthToken() {
@@ -280,28 +281,48 @@ async function recordChange(key, payload) {
   const queue = readQueue();
   const user = getAuthUser();
   
-  queue.push({
+  const change = {
     key,
     payload,
     timestamp: new Date().toISOString(),
     userId: user ? user.id : (window.storage ? window.storage.getSession() : null),
-  });
+  };
+  
+  queue.push(change);
   writeQueue(queue);
+  
+  console.log(`[Sync] Recorded change for ${key}, queue length: ${queue.length}`);
 
+  // Attempt to flush immediately if online and authenticated
   if (navigator.onLine && getAuthToken()) {
-    await flush();
+    try {
+      const result = await flush();
+      console.log(`[Sync] Flush result:`, result);
+      return result;
+    } catch (err) {
+      console.warn('[Sync] Immediate flush failed, will retry later', err);
+      return { success: false, error: err.message, queued: true };
+    }
+  } else {
+    console.log(`[Sync] Offline or no token, change queued for later`);
+    return { success: false, queued: true, reason: !navigator.onLine ? 'offline' : 'no-token' };
   }
 }
 
 async function flush() {
   const queue = readQueue();
-  if (queue.length === 0) return { success: true, sent: 0 };
+  if (queue.length === 0) {
+    console.log('[Sync] Nothing to flush');
+    return { success: true, sent: 0 };
+  }
 
   const token = getAuthToken();
   if (!token) {
-    console.warn('No auth token, skipping sync flush');
+    console.warn('[Sync] No auth token, skipping sync flush');
     return { success: false, error: 'No auth token' };
   }
+
+  console.log(`[Sync] Flushing ${queue.length} changes to server...`);
 
   try {
     const response = await apiRequest(SYNC_ENDPOINT, {
@@ -311,23 +332,111 @@ async function flush() {
       }),
     });
 
+    console.log('[Sync] Server response:', response);
+
     if (response.success) {
       writeQueue([]);
       localStorage.setItem(LAST_SYNC_KEY, response.lastSync || new Date().toISOString());
+      notifySyncComplete('push', queue.length);
+      console.log(`[Sync] Successfully synced ${queue.length} changes`);
       return { success: true, sent: queue.length };
     }
     
+    console.warn('[Sync] Server returned success: false');
     return { success: false, error: 'Sync failed' };
   } catch (err) {
-    console.warn('Sync failed, keeping queue', err);
+    console.error('[Sync] Flush error:', err);
     return { success: false, error: err.message };
   }
 }
 
+// ========== Real-time Sync System ==========
+let syncInterval = null;
+const SYNC_INTERVAL_MS = 30000; // 30 seconds
+const syncListeners = [];
+
+function addSyncListener(callback) {
+  if (typeof callback === 'function') {
+    syncListeners.push(callback);
+  }
+}
+
+function removeSyncListener(callback) {
+  const idx = syncListeners.indexOf(callback);
+  if (idx > -1) syncListeners.splice(idx, 1);
+}
+
+function notifySyncComplete(type, count) {
+  syncListeners.forEach(cb => {
+    try { cb({ type, count, timestamp: new Date().toISOString() }); }
+    catch (err) { console.warn('Sync listener error', err); }
+  });
+}
+
+async function periodicSync() {
+  if (!getAuthToken()) return;
+  
+  try {
+    // First flush any pending changes
+    await flush();
+    
+    // Then pull latest from server
+    const result = await pullSnapshot();
+    if (result.applied) {
+      notifySyncComplete('pull', Object.keys(result.data || {}).length);
+    }
+  } catch (err) {
+    console.warn('Periodic sync error', err);
+  }
+}
+
+function startPeriodicSync() {
+  if (syncInterval) return;
+  
+  syncInterval = setInterval(periodicSync, SYNC_INTERVAL_MS);
+  console.log('Periodic sync started');
+}
+
+function stopPeriodicSync() {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+    console.log('Periodic sync stopped');
+  }
+}
+
 function init() {
+  // Sync when coming back online
   window.addEventListener('online', () => {
     if (getAuthToken()) {
       flush();
+      periodicSync();
+    }
+  });
+  
+  // Handle visibility change - sync when tab becomes visible
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && getAuthToken()) {
+      periodicSync();
+    }
+  });
+  
+  // Start periodic sync if authenticated
+  if (getAuthToken()) {
+    startPeriodicSync();
+  }
+  
+  // Handle before unload - try to flush pending changes
+  window.addEventListener('beforeunload', () => {
+    if (getAuthToken() && readQueue().length > 0) {
+      // Use sendBeacon for reliable delivery
+      const queue = readQueue();
+      if (queue.length > 0) {
+        navigator.sendBeacon(SYNC_ENDPOINT, JSON.stringify({
+          changes: queue,
+          token: getAuthToken()
+        }));
+      }
     }
   });
 }
@@ -505,6 +614,41 @@ function getFileUrl(fileId) {
   return `${FILES_ENDPOINT}?action=download&id=${encodeURIComponent(fileId)}`;
 }
 
+// ========== OTP API ==========
+async function sendOtp(email, name = 'User') {
+  const response = await fetch(`${OTP_ENDPOINT}?action=send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, name }),
+  });
+  
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to send OTP');
+  }
+  return data;
+}
+
+async function verifyOtp(email, code) {
+  const response = await fetch(`${OTP_ENDPOINT}?action=verify`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, code }),
+  });
+  
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error || 'Invalid OTP');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
 // ========== Export ==========
 window.sync = {
   // Queue management
@@ -556,6 +700,17 @@ window.sync = {
   listFiles,
   deleteFile,
   getFileUrl,
+  
+  // OTP
+  sendOtp,
+  verifyOtp,
+  
+  // Real-time sync
+  startPeriodicSync,
+  stopPeriodicSync,
+  periodicSync,
+  addSyncListener,
+  removeSyncListener,
   
   // Helper
   apiRequest,

@@ -76,6 +76,13 @@ function get_user_by_id($userId) {
 
 function get_authenticated_user() {
     $token = get_auth_token();
+    if (!$token) {
+        // Also check for token in JSON payload (for sendBeacon)
+        $payload = json_decode(file_get_contents('php://input'), true);
+        if (is_array($payload) && isset($payload['token'])) {
+            $token = $payload['token'];
+        }
+    }
     if (!$token) return null;
     
     $session = get_session($token);

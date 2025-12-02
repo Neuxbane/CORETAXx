@@ -3,7 +3,6 @@ const state = {
   needs2FA: false,
   pendingUser: null,
   currentUser: null,
-  twoFactorCode: '',
   userPage: 'dashboard',
   adminPage: 'dashboard',
   sidebarOpen: false,
@@ -44,6 +43,11 @@ async function boot() {
         
         // Sync data from server
         await window.sync.pullSnapshot();
+        
+        // Start real-time sync
+        if (window.sync.startPeriodicSync) {
+          window.sync.startPeriodicSync();
+        }
         
         // Update local user data
         const users = window.storage.getUsers();
@@ -89,6 +93,10 @@ function render() {
   window.utils.clearChildren(app);
 
   if (!state.currentUser) {
+    // Stop sync when logged out
+    if (window.sync && window.sync.stopPeriodicSync) {
+      window.sync.stopPeriodicSync();
+    }
     renderAuth(app);
     return;
   }
@@ -103,6 +111,12 @@ function render() {
 /* USER HELPERS */
 function userAssets() {
   return window.storage.getAssets().filter((a) => a.userId === state.currentUser.id);
+}
+
+// Async version that resolves blob URLs for display
+async function userAssetsWithBlobs() {
+  const assets = await window.storage.getAssetsWithBlobs();
+  return assets.filter((a) => a.userId === state.currentUser.id);
 }
 
 function userTaxes() {
@@ -131,25 +145,30 @@ function renderUserDashboard() {
     .slice(0, 3);
 
   const wrap = document.createElement('div');
-  wrap.className = 'space-y-6';
+  wrap.className = 'space-y-6 page-enter';
   wrap.innerHTML = `
-    <div>
+    <div class="animate-slide-up">
       <h1 class="text-gray-900 text-xl font-semibold mb-2">Dashboard</h1>
-      <p class="text-gray-600">Selamat datang, ${state.currentUser.name}!</p>
+      <p class="text-gray-600">Selamat datang, <span class="gradient-text font-semibold">${state.currentUser.name}</span>!</p>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      ${statCard(iconCar(), 'Total Aset', assets.length)}
-      ${statCard(iconMoney(), 'Total Pajak Terutang', window.utils.formatCurrency(totalTaxDue))}
-      ${statCard(iconAlert(), 'Jatuh Tempo (30 Hari)', upcoming.length)}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="stat-cards">
+      ${statCard(iconCar(), 'Total Aset', assets.length, 0)}
+      ${statCard(iconMoney(), 'Total Pajak Terutang', window.utils.formatCurrency(totalTaxDue), 1)}
+      ${statCard(iconAlert(), 'Jatuh Tempo (30 Hari)', upcoming.length, 2)}
     </div>
-    <div id="location-status"></div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+    <div id="location-status" class="animate-fade-in" style="animation-delay: 0.3s"></div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 card-hover animate-slide-up" style="animation-delay: 0.4s">
       <div class="p-6 border-b border-gray-200">
         <h2 class="text-gray-900 font-semibold">Pajak Jatuh Tempo Terdekat</h2>
       </div>
       <div class="p-6" id="upcoming-taxes"></div>
     </div>
   `;
+
+  // Trigger stagger animation for stat cards
+  setTimeout(() => {
+    wrap.querySelectorAll('.stagger-item').forEach(item => item.classList.add('animated'));
+  }, 100);
 
   renderLocationStatus(wrap.querySelector('#location-status'));
   renderUpcomingList(wrap.querySelector('#upcoming-taxes'), upcoming);
@@ -160,7 +179,7 @@ function inputField(label, id, placeholder, value) {
   return `
     <div>
       <label class="block text-gray-700 mb-2">${label}</label>
-      <input id="${id}" type="text" value="${h(value || '')}" placeholder="${h(placeholder || '')}" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+      <input id="${id}" type="text" value="${h(value || '')}" placeholder="${h(placeholder || '')}" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent input-focus smooth-all" />
     </div>
   `;
 }
@@ -169,7 +188,7 @@ function numberField(label, id, value) {
   return `
     <div>
       <label class="block text-gray-700 mb-2">${label}</label>
-      <input id="${id}" type="number" value="${h(value || '')}" min="0" step="0.01" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+      <input id="${id}" type="number" value="${h(value || '')}" min="0" step="0.01" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent input-focus smooth-all" />
     </div>
   `;
 }
@@ -233,6 +252,7 @@ function renderAdminLayout(container) {
   const logoutBtn = sidebar.querySelector('#admin-logout');
   const closeBtn = sidebar.querySelector('#admin-close');
   const pageContainer = wrap.querySelector('#admin-page-container');
+  const manualSyncBtn = sidebar.querySelector('#admin-manual-sync-btn');
 
   function updateSidebarActive() {
     links.forEach((link) => {
@@ -242,6 +262,26 @@ function renderAdminLayout(container) {
         link.classList.remove('bg-red-50', 'text-red-600');
       }
     });
+  }
+  
+  function updateSyncStatus(syncing = false) {
+    const indicator = sidebar.querySelector('#admin-sync-status-indicator');
+    if (!indicator) return;
+    
+    const dot = indicator.querySelector('.rounded-full');
+    const text = indicator.querySelector('span:nth-child(2)');
+    
+    if (syncing) {
+      dot.classList.remove('bg-green-500');
+      dot.classList.add('bg-yellow-500');
+      text.textContent = 'Sinkronisasi...';
+    } else {
+      dot.classList.remove('bg-yellow-500');
+      dot.classList.add('bg-green-500');
+      const lastSync = window.sync && window.sync.getLastSync ? window.sync.getLastSync() : null;
+      const syncTime = lastSync ? new Date(lastSync).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+      text.textContent = `Sinkronisasi: ${syncTime}`;
+    }
   }
 
   function closeSidebar() {
@@ -255,6 +295,38 @@ function renderAdminLayout(container) {
   });
   overlay.addEventListener('click', closeSidebar);
   if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+  
+  // Manual sync button
+  if (manualSyncBtn) {
+    manualSyncBtn.addEventListener('click', async () => {
+      if (!window.sync || !window.sync.periodicSync) return;
+      
+      updateSyncStatus(true);
+      manualSyncBtn.disabled = true;
+      manualSyncBtn.classList.add('animate-spin');
+      
+      try {
+        await window.sync.periodicSync();
+        renderAdminPage(pageContainer);
+      } catch (err) {
+        console.warn('Manual sync failed', err);
+      }
+      
+      manualSyncBtn.disabled = false;
+      manualSyncBtn.classList.remove('animate-spin');
+      updateSyncStatus(false);
+    });
+  }
+  
+  // Listen for sync updates
+  if (window.sync && window.sync.addSyncListener) {
+    window.sync.addSyncListener((event) => {
+      updateSyncStatus(false);
+      if (event.type === 'pull' && event.count > 0) {
+        renderAdminPage(pageContainer);
+      }
+    });
+  }
 
   links.forEach((link) => {
     link.addEventListener('click', () => {
@@ -266,6 +338,11 @@ function renderAdminLayout(container) {
   });
 
   logoutBtn.addEventListener('click', async () => {
+    // Stop periodic sync
+    if (window.sync && window.sync.stopPeriodicSync) {
+      window.sync.stopPeriodicSync();
+    }
+    
     // Logout from API
     if (window.sync && window.sync.logout) {
       try {
@@ -286,6 +363,9 @@ function renderAdminLayout(container) {
 
 function renderAdminSidebarContent() {
   const user = state.currentUser || {};
+  const lastSync = window.sync && window.sync.getLastSync ? window.sync.getLastSync() : null;
+  const syncTime = lastSync ? new Date(lastSync).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+  
   return `
     <div class="flex flex-col h-full">
       <div class="p-6 border-b border-gray-200">
@@ -306,6 +386,16 @@ function renderAdminSidebarContent() {
             </div>
           </div>
         </div>
+        <!-- Sync Status -->
+        <div class="mt-3 flex items-center gap-2 text-xs text-gray-500" id="admin-sync-status-indicator">
+          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span>Sinkronisasi: ${syncTime}</span>
+          <button id="admin-manual-sync-btn" class="ml-auto p-1 hover:bg-gray-100 rounded transition-colors" title="Sinkronisasi manual">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
       </div>
       <nav class="flex-1 p-4 space-y-1">
         ${[
@@ -317,7 +407,7 @@ function renderAdminSidebarContent() {
         ]
           .map(
             (item) => `
-          <button data-admin-page="${item.id}" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left">
+          <button data-admin-page="${item.id}" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-left hover:bg-gray-100 hover:translate-x-1 active:scale-[0.98]">
             ${item.icon}
             <span>${item.label}</span>
           </button>`
@@ -325,7 +415,7 @@ function renderAdminSidebarContent() {
           .join('')}
       </nav>
       <div class="p-4 border-t border-gray-200">
-        <button id="admin-logout" class="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+        <button id="admin-logout" class="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:translate-x-1 active:scale-[0.98]">
           ${iconLogout()}
           <span>Logout</span>
         </button>
@@ -336,26 +426,52 @@ function renderAdminSidebarContent() {
 
 function renderAdminPage(container) {
   if (!container) return;
-  container.innerHTML = '';
-  switch (state.adminPage) {
-    case 'dashboard':
-      container.appendChild(renderAdminDashboard());
-      break;
-    case 'users':
-      container.appendChild(renderAdminUsers());
-      break;
-    case 'assets':
-      container.appendChild(renderAdminAssets());
-      break;
-    case 'transactions':
-      container.appendChild(renderAdminTransactions());
-      break;
-    case 'location':
-      container.appendChild(renderAdminLocation());
-      break;
-    default:
-      container.appendChild(renderAdminDashboard());
+  
+  // Add exit animation to current content
+  const currentContent = container.firstElementChild;
+  if (currentContent) {
+    currentContent.style.opacity = '0';
+    currentContent.style.transform = 'translateX(-20px)';
+    currentContent.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
   }
+  
+  // Wait for exit animation then render new content
+  setTimeout(() => {
+    container.innerHTML = '';
+    
+    let newContent;
+    switch (state.adminPage) {
+      case 'dashboard':
+        newContent = renderAdminDashboard();
+        break;
+      case 'users':
+        newContent = renderAdminUsers();
+        break;
+      case 'assets':
+        newContent = renderAdminAssets();
+        break;
+      case 'transactions':
+        newContent = renderAdminTransactions();
+        break;
+      case 'location':
+        newContent = renderAdminLocation();
+        break;
+      default:
+        newContent = renderAdminDashboard();
+    }
+    
+    // Apply enter animation
+    newContent.style.opacity = '0';
+    newContent.style.transform = 'translateX(20px)';
+    container.appendChild(newContent);
+    
+    // Trigger reflow then animate in
+    requestAnimationFrame(() => {
+      newContent.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+      newContent.style.opacity = '1';
+      newContent.style.transform = 'translateX(0)';
+    });
+  }, currentContent ? 150 : 0);
 }
 
 function renderAdminDashboard() {
@@ -794,27 +910,115 @@ function renderAdminTransactions() {
 
   function downloadReport() {
     const list = filterTransactions();
-    const reportData = {
-      date: new Date().toISOString(),
-      filter: dateSelect.value,
-      totalTransactions: list.length,
-      totalRevenue: list.reduce((sum, t) => sum + (t.amount || 0), 0),
-      transactions: list.map((t) => ({
-        date: window.utils.formatDateTime(t.paymentDate),
-        user: getUserName(t.userId),
-        asset: t.assetName,
-        taxNumber: t.taxNumber,
-        amount: window.utils.formatCurrency(t.amount),
-      })),
+    const totalRevenue = list.reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // Create PDF using jsPDF
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFillColor(30, 64, 175); // Blue header
+    doc.rect(0, 0, 210, 40, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CORETAX', 105, 18, { align: 'center' });
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Laporan Transaksi Pajak', 105, 28, { align: 'center' });
+    
+    // Report info
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    
+    const filterLabels = {
+      'all': 'Semua Waktu',
+      'today': 'Hari Ini',
+      'week': '7 Hari Terakhir',
+      'month': '30 Hari Terakhir'
     };
-    const dataStr = JSON.stringify(reportData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const name = `laporan-transaksi-${dateSelect.value}-${Date.now()}.json`;
-    const link = document.createElement('a');
-    link.setAttribute('href', dataUri);
-    link.setAttribute('download', name);
-    link.click();
-    alert('Laporan berhasil diunduh! (simulasi JSON, bukan PDF)');
+    
+    const reportDate = new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    doc.text(`Tanggal Laporan: ${reportDate}`, 14, 50);
+    doc.text(`Filter: ${filterLabels[dateSelect.value] || dateSelect.value}`, 14, 56);
+    doc.text(`Total Transaksi: ${list.length}`, 14, 62);
+    doc.text(`Total Pendapatan: ${window.utils.formatCurrency(totalRevenue)}`, 14, 68);
+    
+    // Table
+    const tableData = list.map((t, idx) => [
+      idx + 1,
+      window.utils.formatDateTime(t.paymentDate),
+      getUserName(t.userId),
+      t.assetName || '-',
+      t.taxNumber || '-',
+      window.utils.formatCurrency(t.amount)
+    ]);
+    
+    doc.autoTable({
+      startY: 75,
+      head: [['No', 'Tanggal', 'Pengguna', 'Aset', 'No. Pajak', 'Jumlah']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [30, 64, 175],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 12 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 35 },
+        4: { cellWidth: 30 },
+        5: { halign: 'right', cellWidth: 30 }
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 3
+      },
+      alternateRowStyles: {
+        fillColor: [245, 247, 250]
+      },
+      didDrawPage: function(data) {
+        // Footer on each page
+        doc.setFontSize(8);
+        doc.setTextColor(128, 128, 128);
+        doc.text(
+          `Halaman ${doc.internal.getCurrentPageInfo().pageNumber}`,
+          105,
+          doc.internal.pageSize.height - 10,
+          { align: 'center' }
+        );
+        doc.text(
+          '© ' + new Date().getFullYear() + ' CORETAX - Sistem Manajemen Pajak Terpadu',
+          105,
+          doc.internal.pageSize.height - 5,
+          { align: 'center' }
+        );
+      }
+    });
+    
+    // Summary at the end
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total Pendapatan:', 130, finalY);
+    doc.text(window.utils.formatCurrency(totalRevenue), 195, finalY, { align: 'right' });
+    
+    // Save PDF
+    const fileName = `laporan-transaksi-${dateSelect.value}-${Date.now()}.pdf`;
+    doc.save(fileName);
   }
 
   searchInput.addEventListener('input', renderTable);
@@ -1184,16 +1388,16 @@ function iconActivity(cls = 'w-5 h-5') {
   return `<svg xmlns="http://www.w3.org/2000/svg" class="${cls}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M22 12h-4l-3 9-6-18-3 9H2"/></svg>`;
 }
 
-function statCard(icon, label, value) {
+function statCard(icon, label, value, index = 0) {
   return `
-    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-200 card-hover stagger-item" style="animation-delay: ${index * 0.1}s">
       <div class="flex items-center gap-4">
-        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center icon-glow smooth-all">
           ${icon}
         </div>
         <div>
           <p class="text-gray-600">${label}</p>
-          <p class="text-gray-900 font-semibold">${value}</p>
+          <p class="text-gray-900 font-semibold stat-value">${value}</p>
         </div>
       </div>
     </div>
@@ -1289,15 +1493,15 @@ function renderUserProfile() {
   const wrap = document.createElement('div');
   wrap.className = 'max-w-4xl mx-auto space-y-6';
   wrap.innerHTML = `
-    <div>
+    <div class="page-header">
       <h1 class="text-gray-900 text-xl font-semibold mb-2">Data Diri</h1>
       <p class="text-gray-600">Kelola informasi profil Anda</p>
     </div>
-    <div id="profile-success" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-2">
+    <div id="profile-success" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-2 animate-slide-up">
       ${iconCheck('w-5 h-5 text-green-600')}
       <span class="text-green-700">Profil berhasil diperbarui!</span>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 card-hover animate-slide-up" style="animation-delay: 0.1s">
       <div class="p-6 border-b border-gray-200">
         <h2 class="text-gray-900 font-semibold mb-4">Foto Profil</h2>
         <div class="flex items-center gap-6">
@@ -1437,11 +1641,11 @@ function renderUserSettings() {
   const wrap = document.createElement('div');
   wrap.className = 'max-w-2xl mx-auto space-y-6';
   wrap.innerHTML = `
-    <div>
+    <div class="page-header">
       <h1 class="text-gray-900 text-xl font-semibold mb-2">Pengaturan</h1>
       <p class="text-gray-600">Kelola pengaturan akun Anda</p>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 card-hover animate-slide-up" style="animation-delay: 0.1s">
       <div class="flex items-center gap-3 mb-6">
         <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
           ${iconLock('w-5 h-5 text-blue-600')}
@@ -1542,11 +1746,11 @@ function renderUserTaxes() {
   const wrap = document.createElement('div');
   wrap.className = 'space-y-6';
   wrap.innerHTML = `
-    <div>
+    <div class="page-header">
       <h1 class="text-gray-900 text-xl font-semibold mb-2">Manajemen Pajak</h1>
       <p class="text-gray-600">Lihat dan bayar pajak aset Anda</p>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 animate-slide-up" style="animation-delay: 0.1s">
       <div class="flex flex-col md:flex-row gap-4">
         <div class="flex-1 relative">
           ${iconSearch('w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2')}
@@ -1687,8 +1891,8 @@ function renderUserTaxes() {
 
   function openPaymentModal(tax) {
     modalContainer.innerHTML = `
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-md w-full">
+      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl modal-content">
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <h2 class="text-gray-900 font-semibold">Pembayaran Pajak</h2>
             <button id="pay-close" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">${iconClose('w-5 h-5')}</button>
@@ -1766,17 +1970,17 @@ function renderUserAssets() {
   const wrap = document.createElement('div');
   wrap.className = 'space-y-6';
   wrap.innerHTML = `
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between page-header">
       <div>
         <h1 class="text-gray-900 text-xl font-semibold mb-2">Data Kepemilikan</h1>
         <p class="text-gray-600">Kelola aset kendaraan dan properti Anda</p>
       </div>
-      <button id="asset-add" class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+      <button id="asset-add" class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors btn-press">
         ${iconPlus('w-5 h-5')}
         Tambah Aset
       </button>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 animate-slide-up" style="animation-delay: 0.1s">
       <div class="flex flex-col md:flex-row gap-4">
         <div class="flex-1 relative">
           ${iconSearch('w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2')}
@@ -1802,10 +2006,16 @@ function renderUserAssets() {
   const modalContainer = wrap.querySelector('#asset-modal');
   wrap.querySelector('#asset-add').addEventListener('click', () => openAssetForm());
 
-  function renderList() {
+  async function renderList() {
+    // Show loading state
+    listContainer.innerHTML = `<div class="text-center py-8 text-gray-500">Memuat aset...</div>`;
+    
     const searchTerm = (searchInput.value || '').toLowerCase();
     const filter = filterSelect.value;
-    const assets = userAssets()
+    
+    // Use async version that resolves blob URLs
+    const allAssets = await userAssetsWithBlobs();
+    const assets = allAssets
       .filter((a) => {
         if (filter === 'vehicle' && a.nonCurrentAssetType !== 'KENDARAAN') return false;
         if (filter === 'property' && !(a.nonCurrentAssetType === 'BANGUNAN' || a.nonCurrentAssetType === 'TANAH')) return false;
@@ -1855,7 +2065,7 @@ function renderUserAssets() {
                   ? `<div class="flex items-center gap-1 text-gray-600 text-sm mb-2">${iconMapPin('w-4 h-4')}<span>${Number(asset.latitude).toFixed(6)}, ${Number(asset.longitude).toFixed(6)}</span></div>`
                   : '';
               return `
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all card-animate card-hover">
                   <div class="flex items-start justify-between mb-4">
                     <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                       ${iconForAssetType(asset)}
@@ -1875,7 +2085,7 @@ function renderUserAssets() {
                     asset.photos && asset.photos.length > 0
                       ? `<div class="relative mb-3 group" data-asset-carousel="${asset.id}">
                           <div class="overflow-hidden rounded-lg border border-gray-200">
-                            <img data-slider-main src="${h(asset.photos[0].url || asset.photos[0].data)}" alt="${h(asset.photos[0].name || 'Photo')}" class="w-full h-40 object-cover transition-transform duration-300" />
+                            <img data-slider-main src="${h(asset.photos[0].displayUrl || asset.photos[0].url || asset.photos[0].data)}" alt="${h(asset.photos[0].name || 'Photo')}" class="w-full h-40 object-cover transition-transform duration-300" />
                           </div>
                           ${
                             asset.photos.length > 1
@@ -1898,7 +2108,7 @@ function renderUserAssets() {
                     asset.attachments && asset.attachments.length > 0
                       ? `<div class="mb-3 flex flex-wrap gap-2">
                           ${asset.attachments.map(att => `
-                            <a href="${h(att.url || att.data)}" target="_blank" class="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100 transition-colors">
+                            <a href="${h(att.displayUrl || att.url || att.data)}" target="_blank" class="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100 transition-colors">
                               ${iconFile('w-3 h-3')}${h(att.name || 'Document')}
                             </a>
                           `).join('')}
@@ -1960,7 +2170,7 @@ function renderUserAssets() {
       
       const updateImg = () => {
         const photo = asset.photos[idx];
-        imgEl.src = photo.url || photo.data;
+        imgEl.src = photo.displayUrl || photo.url || photo.data;
         imgEl.alt = photo.name || 'Photo';
         if (currentSpan) currentSpan.textContent = idx + 1;
         dots.forEach((dot, i) => {
@@ -2015,7 +2225,35 @@ function renderUserAssets() {
     });
   }
 
-  function openAssetForm(asset) {
+  async function openAssetForm(asset) {
+    // Resolve IndexedDB blob URLs to displayable URLs if editing
+    let resolvedPhotos = [];
+    let resolvedAttachments = [];
+    
+    if (asset) {
+      // Resolve photos
+      if (asset.photos && asset.photos.length > 0) {
+        for (const photo of asset.photos) {
+          const displayUrl = await window.blobStorage.resolveMediaUrl(photo);
+          resolvedPhotos.push({
+            ...photo,
+            displayUrl: displayUrl || photo.url || photo.data,
+          });
+        }
+      }
+      
+      // Resolve attachments
+      if (asset.attachments && asset.attachments.length > 0) {
+        for (const att of asset.attachments) {
+          const displayUrl = await window.blobStorage.resolveMediaUrl(att);
+          resolvedAttachments.push({
+            ...att,
+            displayUrl: displayUrl || att.url || att.data,
+          });
+        }
+      }
+    }
+    
     const formData = {
       assetType: asset ? asset.assetType : '',
       assetName: asset ? asset.assetName : '',
@@ -2038,14 +2276,14 @@ function renderUserAssets() {
       ownershipStatus: asset ? asset.ownershipStatus : '',
       latitude: asset ? asset.latitude : '',
       longitude: asset ? asset.longitude : '',
-      photos: asset ? asset.photos || [] : [],
-      attachments: asset ? asset.attachments || [] : [],
+      photos: asset ? resolvedPhotos : [],
+      attachments: asset ? resolvedAttachments : [],
     };
 
     try {
       setHTML(modalContainer, `
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto modal-content">
           <div class="p-6 border-b border-gray-200 flex items-center gap-3">
             <button id="asset-back" class="p-2 hover:bg-gray-100 rounded-lg">${iconBack('w-6 h-6')}</button>
             <div>
@@ -2381,6 +2619,7 @@ function renderUserAssets() {
       const photoList = modalContainer.querySelector('#photo-list');
 
       function renderAtt() {
+      const getAttUrl = (att) => att.displayUrl || att.url || att.data;
       attList.innerHTML = formData.attachments
           .map(
             (att, idx) => `
@@ -2393,7 +2632,7 @@ function renderUserAssets() {
               </div>
             </div>
             <div class="flex items-center gap-2">
-              ${att.url ? `<a href="${h(att.url)}" target="_blank" class="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors" title="Open">${iconEye('w-4 h-4')}</a>` : ''}
+              ${getAttUrl(att) ? `<a href="${h(getAttUrl(att))}" target="_blank" class="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors" title="Open">${iconEye('w-4 h-4')}</a>` : ''}
               <button data-remove-att="${idx}" class="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors">${iconClose('w-4 h-4')}</button>
             </div>
           </div>
@@ -2425,7 +2664,7 @@ function renderUserAssets() {
           .map(
             (photo, idx) => `
           <div class="relative group">
-            <img src="${h(photo.url || photo.data)}" alt="${h(photo.name)}" class="w-full h-24 object-cover rounded-lg border border-gray-200" />
+            <img src="${h(photo.displayUrl || photo.url || photo.data)}" alt="${h(photo.name)}" class="w-full h-24 object-cover rounded-lg border border-gray-200" />
             <button data-remove-photo="${idx}" class="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity">${iconClose('w-3 h-3')}</button>
             <p class="mt-1 text-xs text-gray-600 truncate">${h(photo.name)}</p>
           </div>
@@ -2551,13 +2790,15 @@ function renderUserAssets() {
       }
       
       saveBtn.disabled = true;
-      saveBtn.innerHTML = '${iconSave('w-4 h-4')}Menyimpan...';
+      saveBtn.innerHTML = `${iconSave('w-4 h-4')}Menyimpan...`;
       
       const taxCalc = updateTaxPreview() || { totalRate: 0, taxAmount: 0 };
       const assetId = asset ? asset.id : 'asset-' + Date.now();
       
       // Upload new files to server if authenticated
       const token = window.sync.getAuthToken();
+      let serverUploadSucceeded = false;
+      
       if (token) {
         try {
           // Upload photos that are still base64
@@ -2583,6 +2824,7 @@ function renderUserAssets() {
                   }
                 }
               });
+              serverUploadSucceeded = true;
             }
           }
           
@@ -2608,12 +2850,16 @@ function renderUserAssets() {
                   }
                 }
               });
+              serverUploadSucceeded = true;
             }
           }
         } catch (uploadErr) {
-          console.warn('File upload failed, keeping base64 data', uploadErr);
+          console.warn('[Asset] Server upload failed, will use IndexedDB', uploadErr);
         }
       }
+      
+      // If server upload didn't happen or failed, we still have base64 data
+      // The storage.setAssets will handle saving to IndexedDB
       
       const allAssets = window.storage.getAssets();
       if (asset) {
@@ -2661,7 +2907,18 @@ function renderUserAssets() {
         }
       }
 
-      window.storage.setAssets(allAssets);
+      try {
+        // This will extract blobs to IndexedDB if photos/attachments have base64 data
+        await window.storage.setAssets(allAssets);
+        console.log('[Asset] Saved successfully');
+      } catch (err) {
+        console.error('[Asset] Save failed:', err);
+        alert('Gagal menyimpan aset. ' + (err.message || 'Silakan coba lagi.'));
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `${iconSave('w-4 h-4')}${asset ? 'Perbarui Aset' : 'Simpan Aset'}`;
+        return;
+      }
+      
       modalContainer.classList.add('hidden');
       modalContainer.innerHTML = '';
       renderList();
@@ -2683,10 +2940,18 @@ function renderUserAssets() {
 
   function openTransferModal(asset) {
     const refreshAssets = renderList;
-    const users = window.storage.getUsers().filter((u) => u.role === 'user' && u.id !== state.currentUser.id && u.isActive);
+    const currentUserId = state.currentUser.id;
+    // Filter out current user - they shouldn't be able to transfer to themselves
+    const users = window.storage.getUsers().filter((u) => {
+      // Must be a regular user, active, and NOT the current user
+      if (u.role !== 'user') return false;
+      if (!u.isActive) return false;
+      if (u.id === currentUserId) return false;
+      return true;
+    });
     const modalHTML = `
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col modal-content">
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 class="text-gray-900 font-semibold">Transfer Kepemilikan</h2>
@@ -2700,7 +2965,7 @@ function renderUserAssets() {
               <input type="text" id="transfer-search" placeholder="Cari berdasarkan nama, email, atau NIK..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
             </div>
           </div>
-          <div class="flex-1 overflow-y-auto p-6" id="transfer-list"></div>
+          <div class="flex-1 overflow-y-auto p-6 space-y-3" id="transfer-list"></div>
           <div class="p-6 border-t border-gray-200 flex gap-3">
             <button id="transfer-submit" disabled class="flex-1 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Transfer Kepemilikan</button>
             <button id="transfer-cancel" class="px-6 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors">Batal</button>
@@ -2734,19 +2999,19 @@ function renderUserAssets() {
           (u.nik || '').includes(term)
       );
       if (filtered.length === 0) {
-        listEl.innerHTML = `<div class="text-center py-8 text-gray-500">Tidak ada pengguna yang sesuai</div>`;
+        listEl.innerHTML = `<div class="text-center py-8 text-gray-500">${users.length === 0 ? 'Tidak ada pengguna lain yang terdaftar' : 'Tidak ada pengguna yang sesuai dengan pencarian'}</div>`;
         return;
       }
       listEl.innerHTML = filtered
         .map(
-          (u) => `
-        <label class="block p-4 border-2 rounded-lg cursor-pointer transition-all ${selected === u.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}">
+          (u, idx) => `
+        <label class="block p-4 border-2 rounded-xl cursor-pointer transition-all card-animate ${selected === u.id ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}" style="animation-delay: ${idx * 0.05}s">
           <input type="radio" name="transfer-user" value="${u.id}" class="sr-only"${selected === u.id ? ' checked=\"checked\"' : ''}/>
           <div class="flex items-center justify-between">
             <div>
               <p class="text-gray-900 font-semibold">${h(u.name)}</p>
-              <p class="text-gray-600">${h(u.email)}</p>
-              <p class="text-gray-500 text-sm">NIK: ${h(u.nik)}</p>
+              <p class="text-gray-600 text-sm">${h(u.email)}</p>
+              <p class="text-gray-500 text-xs">NIK: ${h(u.nik)}</p>
             </div>
             ${selected === u.id ? iconCheck('w-6 h-6 text-blue-600') : ''}
           </div>
@@ -2763,15 +3028,22 @@ function renderUserAssets() {
       });
     }
 
-    submitBtn.addEventListener('click', () => {
+    submitBtn.addEventListener('click', async () => {
       if (!selected) return;
+      
+      // Double-check: prevent transfer to self
+      if (selected === currentUserId) {
+        alert('Tidak dapat mentransfer aset ke diri sendiri');
+        return;
+      }
+      
       const allAssets = window.storage.getAssets();
       const idx = allAssets.findIndex((a) => a.id === asset.id);
       if (idx !== -1) {
         allAssets[idx].userId = selected;
         allAssets[idx].transferHistory = allAssets[idx].transferHistory || [];
-        allAssets[idx].transferHistory.push({ fromUserId: asset.userId, toUserId: selected, date: new Date().toISOString() });
-        window.storage.setAssets(allAssets);
+        allAssets[idx].transferHistory.push({ fromUserId: currentUserId, toUserId: selected, date: new Date().toISOString() });
+        await window.storage.setAssets(allAssets);
         const taxes = window.storage.getTaxes().map((t) => (t.assetId === asset.id ? { ...t, userId: selected } : t));
         window.storage.setTaxes(taxes);
       }
@@ -2785,8 +3057,8 @@ function renderUserAssets() {
 
   function openDeleteModal(asset) {
     const modalHTML = `
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-md w-full shadow-xl border border-gray-200 overflow-hidden">
+      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 overflow-hidden modal-content">
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 class="text-gray-900 font-semibold">Hapus Aset</h2>
@@ -2817,9 +3089,19 @@ function renderUserAssets() {
 
     modalContainer.querySelector('[data-delete-close]')?.addEventListener('click', close);
     modalContainer.querySelector('[data-delete-cancel]')?.addEventListener('click', close);
-    modalContainer.querySelector('[data-delete-confirm]')?.addEventListener('click', () => {
+    modalContainer.querySelector('[data-delete-confirm]')?.addEventListener('click', async () => {
+      // Delete blobs from IndexedDB first
+      if (window.blobStorage) {
+        try {
+          await window.blobStorage.deleteByAsset(asset.id);
+          console.log('[Asset] Deleted blobs for asset', asset.id);
+        } catch (err) {
+          console.warn('[Asset] Failed to delete blobs:', err);
+        }
+      }
+      
       const allAssets = window.storage.getAssets().filter((a) => a.id !== asset.id);
-      window.storage.setAssets(allAssets);
+      await window.storage.setAssets(allAssets);
       const taxes = window.storage.getTaxes().filter((t) => t.assetId !== asset.id);
       window.storage.setTaxes(taxes);
       close();
@@ -2871,20 +3153,20 @@ function renderLogin(container) {
   const wrapper = document.createElement('div');
   wrapper.className = 'min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-blue-50 via-white to-blue-50';
   wrapper.innerHTML = `
-    <div class="w-full max-w-md">
-      <div class="bg-white rounded-2xl shadow-xl p-8">
+    <div class="w-full max-w-md animate-scale-in">
+      <div class="bg-white rounded-2xl shadow-xl p-8 card-hover">
         <div class="text-center mb-8">
-          <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+          <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4 animate-float">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
             </svg>
           </div>
-          <h1 class="text-gray-900 text-xl font-semibold mb-2">CORETAX</h1>
+          <h1 class="text-gray-900 text-xl font-semibold mb-2 gradient-text">CORETAX</h1>
           <p class="text-gray-600">Masuk ke akun Anda</p>
         </div>
 
-        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2 animate-slide-up" style="animation-delay: 0.1s">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0-1.105-.895-2-2-2s-2 .895-2 2 .895 2 2 2 2-.895 2-2z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M6.5 20h11l2.5-4-2.5-4-2.5 4h-11l-2.5-4 2.5-4 2.5 4h11" />
@@ -2895,14 +3177,14 @@ function renderLogin(container) {
           </div>
         </div>
 
-        <div id="login-warning" class="hidden mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
+        <div id="login-warning" class="hidden mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2 animate-slide-up">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M5.07 20h13.86A2.07 2.07 0 0021 17.93L12 3 3 17.93A2.07 2.07 0 005.07 20z" />
           </svg>
           <span class="text-yellow-700" id="login-warning-text"></span>
         </div>
 
-        <div id="login-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+        <div id="login-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 animate-slide-up">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 20h13.86A2.07 2.07 0 0021 17.93L12 3 3 17.93A2.07 2.07 0 005.07 20z" />
           </svg>
@@ -2910,41 +3192,37 @@ function renderLogin(container) {
         </div>
 
         <form id="login-form" class="space-y-4">
-          <div>
+          <div class="animate-slide-up" style="animation-delay: 0.15s">
             <label class="block text-gray-700 mb-2">Email atau Username</label>
             <div class="relative">
-              <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 smooth-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M16 12H8m8-4H8m8 8H8m13-7a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <input type="text" name="identifier" class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="email@example.com" required="required" />
+              <input type="text" name="identifier" class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg input-focus smooth-all" placeholder="email@example.com" required="required" />
             </div>
           </div>
 
-          <div>
+          <div class="animate-slide-up" style="animation-delay: 0.2s">
             <label class="block text-gray-700 mb-2">Password</label>
             <div class="relative">
-              <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 smooth-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c1.657 0 3-1.343 3-3V7a3 3 0 10-6 0v1c0 1.657 1.343 3 3 3z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 11h14v9H5z" />
               </svg>
-              <input type="password" name="password" class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" required="required" />
+              <input type="password" name="password" class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg input-focus smooth-all" placeholder="••••••••" required="required" />
             </div>
           </div>
 
-          <div class="flex items-center justify-end">
-            <button type="button" id="forgot-link" class="text-blue-600 hover:text-blue-700">Lupa Password?</button>
+          <div class="flex items-center justify-end animate-slide-up" style="animation-delay: 0.25s">
+            <button type="button" id="forgot-link" class="text-blue-600 hover:text-blue-700 underline-animate">Lupa Password?</button>
           </div>
 
-          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" id="login-submit">Masuk</button>
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed btn-press ripple-btn animate-slide-up" style="animation-delay: 0.3s" id="login-submit">Masuk</button>
         </form>
 
-        <div class="mt-6 text-center">
+        <div class="mt-6 text-center animate-fade-in" style="animation-delay: 0.35s">
           <span class="text-gray-600">Belum punya akun? </span>
-          <button id="register-link" class="text-blue-600 hover:text-blue-700">Daftar Sekarang</button>
-        </div>
-
-        <div class="mt-6 pt-6 border-t border-gray-200">
-          <p class="text-center text-gray-500">Demo: admin / admin123</p>
+          <button id="register-link" class="text-blue-600 hover:text-blue-700 underline-animate font-medium">Daftar Sekarang</button>
         </div>
       </div>
     </div>
@@ -3024,7 +3302,6 @@ function renderLogin(container) {
 
         state.pendingUser = user;
         state.needs2FA = true;
-        state.twoFactorCode = generate2faCode();
         submitBtn.disabled = false;
         submitBtn.textContent = 'Masuk';
         render();
@@ -3074,7 +3351,6 @@ function renderLogin(container) {
 
     state.pendingUser = user;
     state.needs2FA = true;
-    state.twoFactorCode = generate2faCode();
     submitBtn.disabled = false;
     submitBtn.textContent = 'Masuk';
     render();
@@ -3085,24 +3361,30 @@ function renderRegister(container) {
   const users = window.storage.getUsers();
 
   const wrapper = document.createElement('div');
-  wrapper.className = 'min-h-screen flex items-center justify-center p-4 py-12 bg-gradient-to-br from-blue-50 via-white to-blue-50';
+  wrapper.className = 'min-h-screen flex items-center justify-center p-4 py-12 bg-gradient-to-br from-green-50 via-white to-blue-50 relative overflow-hidden';
   wrapper.innerHTML = `
-    <div class="w-full max-w-2xl">
-      <div class="bg-white rounded-2xl shadow-xl p-8">
-        <div class="text-center mb-8">
-          <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 00-3-3.87M8 21v-2a4 4 0 013-3.87M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v4m0 4v10" />
+    <!-- Floating background elements -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute top-20 left-10 w-72 h-72 bg-green-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-float"></div>
+      <div class="absolute top-40 right-10 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-float" style="animation-delay: -2s;"></div>
+      <div class="absolute -bottom-8 left-20 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-float" style="animation-delay: -4s;"></div>
+    </div>
+    
+    <div class="w-full max-w-2xl relative z-10 animate-in" style="--delay: 0">
+      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
+        <div class="text-center mb-8 animate-in" style="--delay: 1">
+          <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-400 to-blue-500 rounded-full mb-4 animate-bounce-subtle shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
             </svg>
           </div>
-          <h1 class="text-gray-900 text-xl font-semibold mb-2">Daftar Akun Baru</h1>
+          <h1 class="text-gray-900 text-2xl font-bold mb-2 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">Daftar Akun Baru</h1>
           <p class="text-gray-600">Lengkapi data diri Anda untuk mendaftar</p>
         </div>
 
-        <div id="register-success" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+        <div id="register-success" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 mb-6 animate-in" style="--delay: 0">
           <div class="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-green-600 animate-bounce-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
             </svg>
             <div>
@@ -3114,69 +3396,81 @@ function renderRegister(container) {
 
         <form id="register-form" class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-gray-700 mb-2">Nama Lengkap *</label>
-              <div class="relative">
-                <input type="text" name="name" class="w-full pl-3 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Nama lengkap" />
+            <div class="animate-in" style="--delay: 2">
+              <label class="block text-gray-700 mb-2 font-medium">Nama Lengkap *</label>
+              <div class="relative group">
+                <input type="text" name="name" class="w-full pl-3 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 hover:border-gray-300" placeholder="Nama lengkap" />
               </div>
               <p class="mt-1 text-xs text-gray-500">3-100 karakter</p>
               <p class="mt-1 text-red-600 text-sm hidden" data-error="name"></p>
             </div>
-            <div>
-              <label class="block text-gray-700 mb-2">Username *</label>
-              <div class="relative">
-                <input type="text" name="username" class="w-full pl-3 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="username" />
+            <div class="animate-in" style="--delay: 2.5">
+              <label class="block text-gray-700 mb-2 font-medium">Username *</label>
+              <div class="relative group">
+                <input type="text" name="username" class="w-full pl-3 pr-10 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 hover:border-gray-300" placeholder="username" />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm" data-availability="username"></span>
               </div>
               <p class="mt-1 text-red-600 text-sm hidden" data-error="username"></p>
             </div>
           </div>
 
-          <div>
-            <label class="block text-gray-700 mb-2">Email *</label>
-            <div class="relative">
-              <input type="email" name="email" class="w-full pl-3 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="email@example.com" />
+          <div class="animate-in" style="--delay: 3">
+            <label class="block text-gray-700 mb-2 font-medium">Email *</label>
+            <div class="relative group">
+              <input type="email" name="email" class="w-full pl-3 pr-10 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 hover:border-gray-300" placeholder="email@example.com" />
               <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm" data-availability="email"></span>
             </div>
             <p class="mt-1 text-red-600 text-sm hidden" data-error="email"></p>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-gray-700 mb-2">Password *</label>
-              <input type="password" name="password" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" />
+            <div class="animate-in" style="--delay: 3.5">
+              <label class="block text-gray-700 mb-2 font-medium">Password *</label>
+              <input type="password" name="password" class="w-full px-3 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 hover:border-gray-300" placeholder="••••••••" />
               <p class="mt-1 text-red-600 text-sm hidden" data-error="password"></p>
             </div>
-            <div>
-              <label class="block text-gray-700 mb-2">Konfirmasi Password *</label>
-              <input type="password" name="confirmPassword" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" />
+            <div class="animate-in" style="--delay: 4">
+              <label class="block text-gray-700 mb-2 font-medium">Konfirmasi Password *</label>
+              <input type="password" name="confirmPassword" class="w-full px-3 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 hover:border-gray-300" placeholder="••••••••" />
               <p class="mt-1 text-red-600 text-sm hidden" data-error="confirmPassword"></p>
             </div>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-gray-700 mb-2">NIK *</label>
-              <input type="text" name="nik" maxlength="16" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="16 digit NIK" />
+            <div class="animate-in" style="--delay: 4.5">
+              <label class="block text-gray-700 mb-2 font-medium">NIK *</label>
+              <input type="text" name="nik" maxlength="16" class="w-full px-3 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 hover:border-gray-300" placeholder="16 digit NIK" />
               <p class="mt-1 text-red-600 text-sm hidden" data-error="nik"></p>
             </div>
-            <div>
-              <label class="block text-gray-700 mb-2">Tanggal Lahir *</label>
-              <input type="date" name="dateOfBirth" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <div class="animate-in" style="--delay: 5">
+              <label class="block text-gray-700 mb-2 font-medium">Tanggal Lahir *</label>
+              <input type="date" name="dateOfBirth" class="w-full px-3 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 hover:border-gray-300" />
               <p class="mt-1 text-red-600 text-sm hidden" data-error="dateOfBirth"></p>
             </div>
           </div>
 
-          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" id="register-submit">Daftar</button>
+          <button type="submit" class="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white py-3 rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 animate-in" style="--delay: 5.5" id="register-submit">
+            <span class="flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              Daftar Sekarang
+            </span>
+          </button>
         </form>
 
-        <div class="mt-6 text-center">
+        <div class="mt-6 text-center animate-in" style="--delay: 6">
           <span class="text-gray-600">Sudah punya akun? </span>
-          <button id="back-login" class="text-blue-600 hover:text-blue-700">Masuk</button>
+          <button id="back-login" class="text-blue-600 hover:text-blue-700 font-semibold transition-colors hover:underline">Masuk</button>
         </div>
       </div>
     </div>
   `;
+
+  // Trigger animations
+  setTimeout(() => {
+    wrapper.querySelectorAll('.animate-in').forEach(el => el.classList.add('animated'));
+  }, 50);
 
   container.appendChild(wrapper);
 
@@ -3375,65 +3669,94 @@ function renderRegister(container) {
 
 function renderForgot(container) {
   const wrapper = document.createElement('div');
-  wrapper.className = 'min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-blue-50 via-white to-blue-50';
+  wrapper.className = 'min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-orange-50 via-white to-red-50 relative overflow-hidden';
   wrapper.innerHTML = `
-    <div class="w-full max-w-md">
-      <div class="bg-white rounded-2xl shadow-xl p-8">
-        <button id="back-login" class="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6">
+    <!-- Animated background -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute top-20 right-10 w-64 h-64 bg-orange-200 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-float"></div>
+      <div class="absolute bottom-20 left-10 w-64 h-64 bg-red-200 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-float" style="animation-delay: -3s;"></div>
+    </div>
+    
+    <div class="w-full max-w-md relative z-10 animate-in" style="--delay: 0">
+      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
+        <button id="back-login" class="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-all duration-300 hover:-translate-x-1 animate-in" style="--delay: 1">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Kembali ke Login
         </button>
 
-        <div class="text-center mb-8">
-          <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M10 9V5a2 2 0 114 0v4m-6 4h8" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 9h14v10H5z" />
+        <div class="text-center mb-8 animate-in" style="--delay: 2">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-orange-400 to-red-500 rounded-full mb-4 shadow-lg animate-pulse-glow">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
           </div>
-          <h1 class="text-gray-900 text-xl font-semibold mb-2" id="forgot-title">Lupa Password?</h1>
+          <h1 class="text-gray-900 text-2xl font-bold mb-2 bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent" id="forgot-title">Lupa Password?</h1>
           <p class="text-gray-600" id="forgot-subtitle">Masukkan email Anda untuk menerima link reset password</p>
         </div>
 
-        <div id="forgot-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <span class="text-red-700" id="forgot-error-text"></span>
+        <div id="forgot-error" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 20h13.86A2.07 2.07 0 0021 17.93L12 3 3 17.93A2.07 2.07 0 005.07 20z" />
+            </svg>
+            <span class="text-red-800" id="forgot-error-text"></span>
+          </div>
         </div>
 
-        <div id="token-box" class="hidden mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p class="text-blue-900">Token reset password Anda: <span class="font-mono" id="token-value"></span></p>
-          <p class="text-blue-700 text-sm mt-1">(Dalam sistem sebenarnya, ini akan dikirim via email)</p>
+        <div id="token-box" class="hidden mb-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+          <div class="flex items-start gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5 animate-bounce-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <div>
+              <p class="text-green-800 font-medium">Token reset password telah dikirim ke email Anda.</p>
+              <p class="text-green-700 text-sm mt-1">Silakan cek inbox atau folder spam Anda.</p>
+            </div>
+          </div>
         </div>
 
         <form id="forgot-form" class="space-y-4">
-          <div id="email-step">
-            <label class="block text-gray-700 mb-2">Email</label>
-            <div class="relative">
-              <input type="email" name="email" class="w-full pl-3 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="email@example.com" required="required" />
+          <div id="email-step" class="animate-in" style="--delay: 3">
+            <label class="block text-gray-700 mb-2 font-medium">Email</label>
+            <div class="relative group">
+              <input type="email" name="email" class="w-full pl-3 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-300 hover:border-gray-300" placeholder="email@example.com" required="required" />
             </div>
           </div>
 
           <div id="reset-step" class="hidden space-y-4">
-            <div>
-              <label class="block text-gray-700 mb-2">Token Reset</label>
-              <input type="text" name="token" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono uppercase" placeholder="XXXXXX" maxlength="6" />
+            <div class="animate-in" style="--delay: 0">
+              <label class="block text-gray-700 mb-2 font-medium">Token Reset</label>
+              <input type="text" name="token" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-300 hover:border-gray-300 font-mono uppercase tracking-widest text-center text-lg" placeholder="XXXXXX" maxlength="6" />
             </div>
-            <div>
-              <label class="block text-gray-700 mb-2">Password Baru</label>
-              <input type="password" name="newPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" />
+            <div class="animate-in" style="--delay: 1">
+              <label class="block text-gray-700 mb-2 font-medium">Password Baru</label>
+              <input type="password" name="newPassword" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-300 hover:border-gray-300" placeholder="••••••••" />
             </div>
-            <div>
-              <label class="block text-gray-700 mb-2">Konfirmasi Password</label>
-              <input type="password" name="confirmPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="••••••••" />
+            <div class="animate-in" style="--delay: 2">
+              <label class="block text-gray-700 mb-2 font-medium">Konfirmasi Password</label>
+              <input type="password" name="confirmPassword" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-300 hover:border-gray-300" placeholder="••••••••" />
             </div>
           </div>
 
-          <button type="submit" id="forgot-submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors">Kirim Link Reset</button>
+          <button type="submit" id="forgot-submit" class="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white py-3 rounded-xl transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 animate-in" style="--delay: 4">
+            <span class="flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              Kirim Link Reset
+            </span>
+          </button>
         </form>
       </div>
     </div>
   `;
+
+  // Trigger animations
+  setTimeout(() => {
+    wrapper.querySelectorAll('.animate-in').forEach(el => el.classList.add('animated'));
+  }, 50);
 
   container.appendChild(wrapper);
 
@@ -3445,12 +3768,10 @@ function renderForgot(container) {
   const errorBox = wrapper.querySelector('#forgot-error');
   const errorText = wrapper.querySelector('#forgot-error-text');
   const tokenBox = wrapper.querySelector('#token-box');
-  const tokenValue = wrapper.querySelector('#token-value');
   const title = wrapper.querySelector('#forgot-title');
   const subtitle = wrapper.querySelector('#forgot-subtitle');
 
   let step = 'email';
-  let generatedToken = '';
   let targetEmail = '';
 
   backLogin.addEventListener('click', () => {
@@ -3473,19 +3794,15 @@ function renderForgot(container) {
       try {
         const response = await window.sync.forgotPassword(email);
         if (response.success) {
-          generatedToken = response.devToken || ''; // For dev only
           targetEmail = email;
-          if (generatedToken) {
-            tokenValue.textContent = generatedToken;
-            tokenBox.classList.remove('hidden');
-          }
+          tokenBox.classList.remove('hidden');
           emailStep.classList.add('hidden');
           resetStep.classList.remove('hidden');
           submitBtn.textContent = 'Reset Password';
           submitBtn.disabled = false;
           step = 'reset';
           title.textContent = 'Reset Password';
-          subtitle.textContent = 'Masukkan token dan password baru Anda';
+          subtitle.textContent = 'Masukkan token dari email dan password baru Anda';
           return;
         }
       } catch (apiErr) {
@@ -3512,17 +3829,11 @@ function renderForgot(container) {
         return;
       }
 
-      generatedToken = Math.random().toString(36).substring(2, 8).toUpperCase();
-      targetEmail = email;
-      tokenValue.textContent = generatedToken;
-      tokenBox.classList.remove('hidden');
-      emailStep.classList.add('hidden');
-      resetStep.classList.remove('hidden');
-      submitBtn.textContent = 'Reset Password';
+      // For local fallback, we can't send email, so show error
+      errorText.textContent = 'Tidak dapat mengirim email reset. Silakan hubungi administrator.';
+      errorBox.classList.remove('hidden');
       submitBtn.disabled = false;
-      step = 'reset';
-      title.textContent = 'Reset Password';
-      subtitle.textContent = 'Masukkan token dan password baru Anda';
+      submitBtn.textContent = 'Kirim Link Reset';
       return;
     }
 
@@ -3546,7 +3857,7 @@ function renderForgot(container) {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Memproses...';
 
-      // Try API reset first
+      // Use API to reset password (validates token server-side)
       try {
         const response = await window.sync.resetPassword(targetEmail, token, newPass);
         if (response.success) {
@@ -3555,35 +3866,12 @@ function renderForgot(container) {
         }
       } catch (apiErr) {
         console.warn('API reset password failed', apiErr);
-        if (apiErr.data && apiErr.data.error) {
-          errorText.textContent = apiErr.data.error;
-          errorBox.classList.remove('hidden');
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Reset Password';
-          return;
-        }
-        // Fall through to local reset
-      }
-
-      // Fallback to local reset
-      if (token !== generatedToken) {
-        errorText.textContent = 'Token tidak valid';
+        errorText.textContent = apiErr.data?.error || 'Token tidak valid atau sudah kadaluarsa';
         errorBox.classList.remove('hidden');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Reset Password';
         return;
       }
-
-      await window.utils.delay(300);
-
-      const users = window.storage.getUsers();
-      const idx = users.findIndex((u) => u.email === targetEmail);
-      if (idx !== -1) {
-        users[idx].password = await window.security.hashPassword(newPass);
-        window.storage.setUsers(users);
-      }
-
-      showResetSuccess();
     }
   });
 
@@ -3613,60 +3901,97 @@ function renderForgot(container) {
 
 function renderTwoFactor(container) {
   const wrapper = document.createElement('div');
-  wrapper.className = 'min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4';
+  wrapper.className = 'min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center p-4 relative overflow-hidden';
   wrapper.innerHTML = `
-    <div class="w-full max-w-md">
-      <div class="bg-white rounded-2xl shadow-xl p-8">
-        <button id="back-btn" class="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6">
+    <!-- Animated background -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute top-20 left-10 w-64 h-64 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-float"></div>
+      <div class="absolute bottom-20 right-10 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-float" style="animation-delay: -3s;"></div>
+    </div>
+    
+    <div class="w-full max-w-md relative z-10 animate-in" style="--delay: 0">
+      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
+        <button id="back-btn" class="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-all duration-300 hover:-translate-x-1 animate-in" style="--delay: 1">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Kembali
         </button>
 
-        <div class="text-center mb-8">
-          <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m1-3h2a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h2" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 8v1m6-1v1M9 17h6" />
+        <div class="text-center mb-8 animate-in" style="--delay: 2">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-400 to-blue-500 rounded-full mb-4 shadow-lg animate-pulse-glow">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h1 class="text-gray-900 text-xl font-semibold mb-2">Verifikasi 2FA</h1>
-          <p class="text-gray-600">Kode verifikasi telah dikirim ke <br /><span>${state.pendingUser ? state.pendingUser.email : ''}</span></p>
+          <h1 class="text-gray-900 text-2xl font-bold mb-2 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">Verifikasi 2FA</h1>
+          <p class="text-gray-600">Kode verifikasi telah dikirim ke <br /><strong class="text-gray-800">${state.pendingUser ? state.pendingUser.email : ''}</strong></p>
         </div>
 
-        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p class="text-blue-900">Kode verifikasi Anda: <span class="font-mono">${state.twoFactorCode}</span></p>
-          <p class="text-blue-700 mt-1 text-sm">(Dalam sistem sebenarnya, ini akan dikirim via email)</p>
+        <div id="twofa-info" class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl animate-in" style="--delay: 3">
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p class="text-blue-800 text-sm">Silakan cek email Anda untuk kode verifikasi 6 digit.</p>
+          </div>
         </div>
 
-        <div id="twofa-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+        <div id="twofa-sending" class="hidden mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-center gap-3">
+          <svg class="animate-spin h-5 w-5 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-yellow-800 font-medium">Mengirim kode verifikasi...</span>
+        </div>
+
+        <div id="twofa-success" class="hidden mb-4 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-green-600 animate-bounce-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <span class="text-green-800 font-medium">Kode verifikasi telah dikirim!</span>
+        </div>
+
+        <div id="twofa-error" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 20h13.86A2.07 2.07 0 0021 17.93L12 3 3 17.93A2.07 2.07 0 005.07 20z" />
           </svg>
-          <span class="text-red-700" id="twofa-error-text"></span>
+          <span class="text-red-800" id="twofa-error-text"></span>
         </div>
 
-        <form id="twofa-form">
-          <div class="flex gap-2 justify-center mb-6">
+        <form id="twofa-form" class="animate-in" style="--delay: 4">
+          <div class="flex gap-3 justify-center mb-6">
             ${Array(6)
               .fill(0)
               .map(
                 (_, idx) => `
-              <input type="text" inputmode="numeric" maxlength="1" data-idx="${idx}" class="w-12 h-14 text-center border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none" ${idx === 0 ? 'autofocus="autofocus"' : ''} />
+              <input type="text" inputmode="numeric" maxlength="1" data-idx="${idx}" class="w-12 h-14 text-center text-xl font-bold border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none transition-all duration-300 hover:border-gray-400 hover:shadow-md" style="transition-delay: ${idx * 50}ms" ${idx === 0 ? 'autofocus="autofocus"' : ''} />
             `
               )
               .join('')}
           </div>
-          <button type="submit" id="twofa-submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors">Verifikasi</button>
+          <button type="submit" id="twofa-submit" class="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white py-3 rounded-xl transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+            <span class="flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Verifikasi
+            </span>
+          </button>
         </form>
 
-        <div class="mt-6 text-center">
-          <button id="resend" class="text-blue-600 hover:text-blue-700">Kirim Ulang Kode</button>
+        <div class="mt-6 text-center animate-in" style="--delay: 5">
+          <button id="resend" class="text-purple-600 hover:text-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all duration-300 hover:underline">Kirim Ulang Kode</button>
+          <p id="resend-timer" class="text-gray-500 text-sm mt-2 hidden"></p>
         </div>
       </div>
     </div>
   `;
+
+  // Trigger animations
+  setTimeout(() => {
+    wrapper.querySelectorAll('.animate-in').forEach(el => el.classList.add('animated'));
+  }, 50);
 
   container.appendChild(wrapper);
 
@@ -3675,8 +4000,59 @@ function renderTwoFactor(container) {
   const inputs = wrapper.querySelectorAll('input[data-idx]');
   const errorBox = wrapper.querySelector('#twofa-error');
   const errorText = wrapper.querySelector('#twofa-error-text');
+  const infoBox = wrapper.querySelector('#twofa-info');
+  const sendingBox = wrapper.querySelector('#twofa-sending');
+  const successBox = wrapper.querySelector('#twofa-success');
   const resend = wrapper.querySelector('#resend');
+  const resendTimer = wrapper.querySelector('#resend-timer');
   const backBtn = wrapper.querySelector('#back-btn');
+
+  let canResend = true;
+  let resendCountdown = 0;
+
+  // Send OTP on load
+  async function sendOtpCode() {
+    if (!state.pendingUser) return;
+    
+    infoBox.classList.add('hidden');
+    successBox.classList.add('hidden');
+    errorBox.classList.add('hidden');
+    sendingBox.classList.remove('hidden');
+    resend.disabled = true;
+    
+    try {
+      await window.sync.sendOtp(state.pendingUser.email, state.pendingUser.name || 'User');
+      sendingBox.classList.add('hidden');
+      successBox.classList.remove('hidden');
+      
+      // Start resend cooldown
+      canResend = false;
+      resendCountdown = 60;
+      resendTimer.classList.remove('hidden');
+      
+      const timer = setInterval(() => {
+        resendCountdown--;
+        resendTimer.textContent = `Kirim ulang dalam ${resendCountdown} detik`;
+        
+        if (resendCountdown <= 0) {
+          clearInterval(timer);
+          canResend = true;
+          resend.disabled = false;
+          resendTimer.classList.add('hidden');
+        }
+      }, 1000);
+      
+    } catch (err) {
+      console.error('Failed to send OTP', err);
+      sendingBox.classList.add('hidden');
+      errorText.textContent = err.message || 'Gagal mengirim kode verifikasi';
+      errorBox.classList.remove('hidden');
+      resend.disabled = false;
+    }
+  }
+
+  // Send OTP immediately
+  sendOtpCode();
 
   backBtn.addEventListener('click', () => {
     state.needs2FA = false;
@@ -3684,9 +4060,9 @@ function renderTwoFactor(container) {
     render();
   });
 
-  resend.addEventListener('click', () => {
-    state.twoFactorCode = generate2faCode();
-    render();
+  resend.addEventListener('click', async () => {
+    if (!canResend) return;
+    await sendOtpCode();
   });
 
   inputs.forEach((input, idx) => {
@@ -3709,7 +4085,7 @@ function renderTwoFactor(container) {
     });
   });
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const codeEntered = Array.from(inputs)
       .map((i) => i.value)
@@ -3718,52 +4094,55 @@ function renderTwoFactor(container) {
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Memverifikasi...';
+    errorBox.classList.add('hidden');
 
-    setTimeout(() => {
-      if (codeEntered === state.twoFactorCode) {
-        window.storage.setSession(state.pendingUser.id);
-        state.currentUser = state.pendingUser;
-        state.pendingUser = null;
-        state.needs2FA = false;
-        (async () => {
-          // Pull user data from server if authenticated
-          if (window.sync && window.sync.getAuthToken && window.sync.getAuthToken()) {
-            try {
-              await window.sync.pullSnapshot();
-              // Also push any local data that might not be synced
-              await window.sync.pushAllData();
-            } catch (err) {
-              console.warn('Post-login sync error', err);
-            }
-          } else if (window.sync && window.sync.pullSnapshot && state.currentUser) {
-            // Fallback to legacy sync
-            await window.sync.pullSnapshot(state.currentUser.id);
+    try {
+      // Verify OTP via API
+      await window.sync.verifyOtp(state.pendingUser.email, codeEntered);
+      
+      // OTP verified successfully
+      window.storage.setSession(state.pendingUser.id);
+      state.currentUser = state.pendingUser;
+      state.pendingUser = null;
+      state.needs2FA = false;
+      
+      // Pull user data from server if authenticated
+      if (window.sync && window.sync.getAuthToken && window.sync.getAuthToken()) {
+        try {
+          await window.sync.pullSnapshot();
+          await window.sync.pushAllData();
+          
+          // Start real-time sync after successful login
+          if (window.sync.startPeriodicSync) {
+            window.sync.startPeriodicSync();
           }
-          
-          // Refresh in-memory user with any server-updated data
-          const refreshed = window.storage.getUsers().find((u) => u.id === state.currentUser.id);
-          if (refreshed) state.currentUser = refreshed;
-          
-          render();
-        })();
-      } else {
-        errorText.textContent = 'Kode verifikasi salah';
-        errorBox.classList.remove('hidden');
-        inputs.forEach((i) => (i.value = ''));
-        inputs[0].focus();
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Verifikasi';
+        } catch (err) {
+          console.warn('Post-login sync error', err);
+        }
+      } else if (window.sync && window.sync.pullSnapshot && state.currentUser) {
+        await window.sync.pullSnapshot(state.currentUser.id);
       }
-    }, 500);
+      
+      // Refresh in-memory user with any server-updated data
+      const refreshed = window.storage.getUsers().find((u) => u.id === state.currentUser.id);
+      if (refreshed) state.currentUser = refreshed;
+      
+      render();
+      
+    } catch (err) {
+      console.error('OTP verification failed', err);
+      errorText.textContent = err.message || 'Kode verifikasi salah';
+      errorBox.classList.remove('hidden');
+      inputs.forEach((i) => (i.value = ''));
+      inputs[0].focus();
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Verifikasi';
+    }
   });
 }
 
 function inputsFilled(inputs) {
   return Array.from(inputs).every((i) => i.value.trim() !== '');
-}
-
-function generate2faCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 function generateUserId() {
@@ -3805,6 +4184,7 @@ function renderUserLayout(container) {
   const logoutBtn = sidebar.querySelector('#user-logout');
   const closeBtn = sidebar.querySelector('#user-close');
   const pageContainer = wrap.querySelector('#user-page-container');
+  const manualSyncBtn = sidebar.querySelector('#manual-sync-btn');
 
   function updateSidebarActive() {
     links.forEach((link) => {
@@ -3814,6 +4194,26 @@ function renderUserLayout(container) {
         link.classList.remove('bg-blue-50', 'text-blue-600');
       }
     });
+  }
+  
+  function updateSyncStatus(syncing = false) {
+    const indicator = sidebar.querySelector('#sync-status-indicator');
+    if (!indicator) return;
+    
+    const dot = indicator.querySelector('.rounded-full');
+    const text = indicator.querySelector('span:nth-child(2)');
+    
+    if (syncing) {
+      dot.classList.remove('bg-green-500');
+      dot.classList.add('bg-yellow-500');
+      text.textContent = 'Sinkronisasi...';
+    } else {
+      dot.classList.remove('bg-yellow-500');
+      dot.classList.add('bg-green-500');
+      const lastSync = window.sync && window.sync.getLastSync ? window.sync.getLastSync() : null;
+      const syncTime = lastSync ? new Date(lastSync).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+      text.textContent = `Sinkronisasi: ${syncTime}`;
+    }
   }
 
   function closeSidebar() {
@@ -3830,6 +4230,40 @@ function renderUserLayout(container) {
   if (closeBtn) {
     closeBtn.addEventListener('click', closeSidebar);
   }
+  
+  // Manual sync button
+  if (manualSyncBtn) {
+    manualSyncBtn.addEventListener('click', async () => {
+      if (!window.sync || !window.sync.periodicSync) return;
+      
+      updateSyncStatus(true);
+      manualSyncBtn.disabled = true;
+      manualSyncBtn.classList.add('animate-spin');
+      
+      try {
+        await window.sync.periodicSync();
+        // Refresh current page to show updated data
+        renderUserPage(pageContainer);
+      } catch (err) {
+        console.warn('Manual sync failed', err);
+      }
+      
+      manualSyncBtn.disabled = false;
+      manualSyncBtn.classList.remove('animate-spin');
+      updateSyncStatus(false);
+    });
+  }
+  
+  // Listen for sync updates
+  if (window.sync && window.sync.addSyncListener) {
+    window.sync.addSyncListener((event) => {
+      updateSyncStatus(false);
+      // Optionally refresh current page when sync completes
+      if (event.type === 'pull' && event.count > 0) {
+        renderUserPage(pageContainer);
+      }
+    });
+  }
 
   links.forEach((link) => {
     link.addEventListener('click', () => {
@@ -3841,6 +4275,11 @@ function renderUserLayout(container) {
   });
 
   logoutBtn.addEventListener('click', async () => {
+    // Stop periodic sync
+    if (window.sync && window.sync.stopPeriodicSync) {
+      window.sync.stopPeriodicSync();
+    }
+    
     // Logout from API
     if (window.sync && window.sync.logout) {
       try {
@@ -3861,6 +4300,9 @@ function renderUserLayout(container) {
 
 function renderUserSidebarContent() {
   const user = state.currentUser || {};
+  const lastSync = window.sync && window.sync.getLastSync ? window.sync.getLastSync() : null;
+  const syncTime = lastSync ? new Date(lastSync).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+  
   return `
     <div class="flex flex-col h-full">
       <div class="p-6 border-b border-gray-200">
@@ -3886,6 +4328,16 @@ function renderUserSidebarContent() {
             </div>
           </div>
         </div>
+        <!-- Sync Status -->
+        <div class="mt-3 flex items-center gap-2 text-xs text-gray-500" id="sync-status-indicator">
+          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span>Sinkronisasi: ${syncTime}</span>
+          <button id="manual-sync-btn" class="ml-auto p-1 hover:bg-gray-100 rounded transition-colors" title="Sinkronisasi manual">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
       </div>
       <nav class="flex-1 p-4 space-y-1">
         ${[
@@ -3897,7 +4349,7 @@ function renderUserSidebarContent() {
         ]
           .map(
             (item) => `
-          <button data-page="${item.id}" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left">
+          <button data-page="${item.id}" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-left hover:bg-gray-100 hover:translate-x-1 active:scale-[0.98]">
             ${item.icon}
             <span>${item.label}</span>
           </button>`
@@ -3905,7 +4357,7 @@ function renderUserSidebarContent() {
           .join('')}
       </nav>
       <div class="p-4 border-t border-gray-200">
-        <button id="user-logout" class="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+        <button id="user-logout" class="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 hover:translate-x-1 active:scale-[0.98]">
           ${iconLogout()}
           <span>Logout</span>
         </button>
@@ -3916,26 +4368,52 @@ function renderUserSidebarContent() {
 
 function renderUserPage(container) {
   if (!container) return;
-  container.innerHTML = '';
-  switch (state.userPage) {
-    case 'dashboard':
-      container.appendChild(renderUserDashboard());
-      break;
-    case 'profile':
-      container.appendChild(renderUserProfile());
-      break;
-    case 'assets':
-      container.appendChild(renderUserAssets());
-      break;
-    case 'taxes':
-      container.appendChild(renderUserTaxes());
-      break;
-    case 'settings':
-      container.appendChild(renderUserSettings());
-      break;
-    default:
-      container.appendChild(renderUserDashboard());
+  
+  // Add exit animation to current content
+  const currentContent = container.firstElementChild;
+  if (currentContent) {
+    currentContent.style.opacity = '0';
+    currentContent.style.transform = 'translateX(-20px)';
+    currentContent.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
   }
+  
+  // Wait for exit animation then render new content
+  setTimeout(() => {
+    container.innerHTML = '';
+    
+    let newContent;
+    switch (state.userPage) {
+      case 'dashboard':
+        newContent = renderUserDashboard();
+        break;
+      case 'profile':
+        newContent = renderUserProfile();
+        break;
+      case 'assets':
+        newContent = renderUserAssets();
+        break;
+      case 'taxes':
+        newContent = renderUserTaxes();
+        break;
+      case 'settings':
+        newContent = renderUserSettings();
+        break;
+      default:
+        newContent = renderUserDashboard();
+    }
+    
+    // Apply enter animation
+    newContent.style.opacity = '0';
+    newContent.style.transform = 'translateX(20px)';
+    container.appendChild(newContent);
+    
+    // Trigger reflow then animate in
+    requestAnimationFrame(() => {
+      newContent.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+      newContent.style.opacity = '1';
+      newContent.style.transform = 'translateX(0)';
+    });
+  }, currentContent ? 150 : 0);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

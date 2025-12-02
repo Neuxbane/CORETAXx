@@ -1,0 +1,9 @@
+{
+    "to": "neuxbane@gmail.com",
+    "subject": "CORETAX: Kode Verifikasi Anda",
+    "timestamp": "2025-12-02T08:29:48+00:00",
+    "provider": "gmail",
+    "error": "Connection failed: Connection timed out (110)",
+    "method": "gmail_smtp_failed",
+    "mail_result": false
+}

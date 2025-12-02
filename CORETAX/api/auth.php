@@ -285,12 +285,8 @@ if ($method === 'POST' && $action === 'register') {
         'action' => 'register'
     ]);
     
-    // Send welcome email (optional)
-    $subject = "Selamat Datang di CORETAX";
-    $message = "<p>Halo {$name},</p>
-        <p>Terima kasih telah mendaftar di CORETAX.</p>
-        <p>Akun Anda telah berhasil dibuat dan siap digunakan.</p>";
-    send_email($email, $subject, $message);
+    // Send welcome email
+    send_welcome_email($email, $name);
     
     // Remove password from response
     unset($user['password']);
@@ -509,19 +505,12 @@ if ($method === 'POST' && $action === 'forgot-password') {
     $user['resetTokenExpires'] = date('c', $resetExpires);
     save_user($user);
     
-    // Send email
-    $subject = "CORETAX: Reset Password";
-    $message = "<p>Halo {$user['name']},</p>
-        <p>Kode reset password Anda adalah: <strong>{$resetToken}</strong></p>
-        <p>Kode ini berlaku selama 1 jam.</p>
-        <p>Jika Anda tidak meminta reset password, abaikan email ini.</p>";
-    send_email($email, $subject, $message);
+    // Send email using new helper
+    send_reset_email($email, $resetToken, $user['name']);
     
     success_response([
         'message' => 'Reset code sent to email',
-        'email' => $email,
-        // For development only - remove in production
-        'devToken' => $resetToken
+        'email' => $email
     ]);
 }
 
