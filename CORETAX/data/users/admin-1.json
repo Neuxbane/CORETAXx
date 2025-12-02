@@ -1,0 +1,14 @@
+{
+    "id": "admin-1",
+    "name": "Admin System",
+    "fullName": "Admin System",
+    "email": "admin@coretax.go.id",
+    "username": "admin",
+    "password": "$2y$12$H9dIlLrp4Udz\/YeFihZEkub5M1s6GqUe1aLk351QEWF.HGxoLYY9K",
+    "nik": "0000000000000000",
+    "dateOfBirth": "1990-01-01",
+    "role": "admin",
+    "isActive": true,
+    "createdAt": "2025-12-02T00:10:42+00:00",
+    "updatedAt": "2025-12-02T00:10:42+00:00"
+}
