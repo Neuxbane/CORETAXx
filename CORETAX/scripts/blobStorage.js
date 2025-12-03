@@ -192,6 +192,7 @@ async function getBlobAsDataURL(id) {
 async function getBlobAsObjectURL(id) {
   const record = await getBlob(id);
   if (!record || !record.blob) {
+    console.warn(`[BlobStorage] Blob not found for ID: ${id}`);
     return null;
   }
   return URL.createObjectURL(record.blob);

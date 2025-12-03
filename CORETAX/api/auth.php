@@ -493,8 +493,7 @@ if ($method === 'POST' && $action === 'forgot-password') {
     
     $user = get_user_by_email($email);
     if (!$user) {
-        // Don't reveal if email exists
-        success_response(['message' => 'If the email exists, a reset code will be sent']);
+        bad_request('Email tidak terdaftar', 404);
     }
     
     // Generate reset token
@@ -506,11 +505,15 @@ if ($method === 'POST' && $action === 'forgot-password') {
     save_user($user);
     
     // Send email using new helper
-    send_reset_email($email, $resetToken, $user['name']);
+    $mailSent = send_reset_email($email, $resetToken, $user['name']);
+    if (!$mailSent) {
+        bad_request('Gagal mengirim email reset. Coba lagi.', 500);
+    }
     
     success_response([
         'message' => 'Reset code sent to email',
-        'email' => $email
+        'email' => $email,
+        'token' => $resetToken
     ]);
 }
 

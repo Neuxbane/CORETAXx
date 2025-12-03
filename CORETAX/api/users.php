@@ -362,6 +362,35 @@ if ($method === 'POST' && $action === 'taxes') {
     ]);
 }
 
+// ========== LIST USERS FOR TRANSFER ==========
+if ($method === 'GET' && $action === 'list') {
+    $user = get_authenticated_user();
+    if (!$user) {
+        bad_request('Unauthorized', 401);
+    }
+    
+    global $usersDir;
+    $results = [];
+    
+    foreach (glob($usersDir . '/*.json') as $file) {
+        $userData = json_decode(file_get_contents($file), true);
+        if (!$userData) continue;
+        if ($userData['id'] === $user['id']) continue;
+        if (!($userData['isActive'] ?? true)) continue;
+        if (($userData['role'] ?? 'user') !== 'user') continue;
+        
+        $results[] = [
+            'id' => $userData['id'],
+            'name' => $userData['fullName'] ?? $userData['name'] ?? '',
+            'email' => $userData['email'] ?? '',
+            'nik' => $userData['nik'] ?? '',
+            'role' => $userData['role'] ?? 'user'
+        ];
+    }
+    
+    success_response(['users' => $results]);
+}
+
 // ========== GET TRANSACTIONS ==========
 if ($method === 'GET' && $action === 'transactions') {
     $user = get_authenticated_user();

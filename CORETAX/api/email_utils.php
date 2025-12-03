@@ -5,7 +5,7 @@
 
 // Mailtrap configuration
 define('MAILTRAP_API_KEY', 'ed07b232dc4d44f67b87e71adcf82805');
-define('MAILTRAP_FROM_EMAIL', 'hello@coretax.epajak.id');
+define('MAILTRAP_FROM_EMAIL', 'noreply@coretax.epajak.id');
 define('MAILTRAP_FROM_NAME', 'CORETAX System');
 define('MAILTRAP_API_URL', 'https://send.api.mailtrap.io/api/send');
 

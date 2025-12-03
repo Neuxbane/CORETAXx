@@ -25,6 +25,39 @@ function setHTML(target, html) {
   }
 }
 
+// Global modal helper - appends modal to body for proper full-screen overlay
+function openGlobalModal(htmlContent) {
+  // Remove any existing global modal
+  closeGlobalModal();
+  
+  // Create modal container
+  const modalWrapper = document.createElement('div');
+  modalWrapper.id = 'global-modal-container';
+  modalWrapper.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;';
+  
+  // Parse and append content
+  if (window.$ && $.parseHTML) {
+    $(modalWrapper).append($.parseHTML(htmlContent));
+  } else {
+    modalWrapper.innerHTML = htmlContent;
+  }
+  
+  document.body.appendChild(modalWrapper);
+  
+  // Prevent body scroll
+  document.body.style.overflow = 'hidden';
+  
+  return modalWrapper;
+}
+
+function closeGlobalModal() {
+  const existing = document.getElementById('global-modal-container');
+  if (existing) {
+    existing.remove();
+  }
+  document.body.style.overflow = '';
+}
+
 async function boot() {
   if (window.sync && window.sync.init) {
     window.sync.init();
@@ -38,7 +71,6 @@ async function boot() {
     try {
       const user = await window.sync.verifySession();
       if (user && user.isActive) {
-        state.currentUser = user;
         window.storage.setSession(user.id);
         
         // Sync data from server
@@ -49,7 +81,7 @@ async function boot() {
           window.sync.startPeriodicSync();
         }
         
-        // Update local user data
+        // Update local user data (merge server data with local data to preserve local-only fields like profilePhoto)
         const users = window.storage.getUsers();
         const existingIndex = users.findIndex(u => u.id === user.id);
         if (existingIndex >= 0) {
@@ -58,6 +90,10 @@ async function boot() {
           users.push(user);
         }
         window.storage.setUsers(users);
+        
+        // Get the merged user from localStorage (preserves local-only fields like profilePhoto)
+        const mergedUsers = window.storage.getUsers();
+        state.currentUser = mergedUsers.find(u => u.id === user.id) || user;
         
         render();
         return;
@@ -648,9 +684,9 @@ function renderAdminUsers() {
   }
 
   function openUserModal(user) {
-    modalContainer.innerHTML = `
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    openGlobalModal(`
+      <div class="fixed inset-0 flex items-center justify-center p-4 modal-backdrop" style="background-color: rgba(0, 0, 0, 0.5);">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" style="box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
           <div class="p-6 border-b border-gray-200">
             <h2 class="text-gray-900 font-semibold">Detail Pengguna</h2>
           </div>
@@ -670,11 +706,10 @@ function renderAdminUsers() {
           </div>
         </div>
       </div>
-    `;
-    modalContainer.classList.remove('hidden');
+    `);
+    const modalContainer = document.getElementById('global-modal-container');
     modalContainer.querySelector('#user-modal-close').addEventListener('click', () => {
-      modalContainer.classList.add('hidden');
-      modalContainer.innerHTML = '';
+      closeGlobalModal();
     });
   }
 
@@ -1507,7 +1542,7 @@ function renderUserProfile() {
         <div class="flex items-center gap-6">
           <div class="relative">
             <div id="profile-photo" class="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center overflow-hidden">
-              ${user.profilePhoto ? `<img src="${h(user.profilePhoto)}" class="w-full h-full object-cover" alt="Profile" />` : iconUser('w-12 h-12 text-blue-600')}
+              ${iconUser('w-12 h-12 text-blue-600')}
             </div>
             <label class="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-700 transition-colors">
               ${iconCamera('w-4 h-4 text-white')}
@@ -1579,7 +1614,7 @@ function renderUserProfile() {
     reader.readAsDataURL(file);
   });
 
-  saveBtn.addEventListener('click', () => {
+  saveBtn.addEventListener('click', async () => {
     const users = window.storage.getUsers();
     const idx = users.findIndex((u) => u.id === user.id);
     if (idx !== -1) {
@@ -1587,10 +1622,32 @@ function renderUserProfile() {
         ...users[idx],
         ...formState,
       };
-      window.storage.setUsers(users);
-      state.currentUser = users[idx];
-      successBox.classList.remove('hidden');
-      setTimeout(() => successBox.classList.add('hidden'), 3000);
+      try {
+        // Use async version to properly handle profile photo blob storage
+        await window.storage.setUsersAsync(users);
+        // Update currentUser with the processed user (may have IndexedDB URL)
+        const updatedUsers = window.storage.getUsers();
+        state.currentUser = updatedUsers.find(u => u.id === user.id) || users[idx];
+        successBox.classList.remove('hidden');
+        setTimeout(() => successBox.classList.add('hidden'), 3000);
+        
+        // Also update sidebar avatar if profile photo was changed
+        if (formState.profilePhoto && state.currentUser.profilePhoto) {
+          window.storage.resolveUserProfilePhoto(state.currentUser).then(photoUrl => {
+            if (photoUrl) {
+              const sidebarAvatar = document.querySelector('#sidebar-user-avatar');
+              if (sidebarAvatar) {
+                sidebarAvatar.innerHTML = `<img src="${h(photoUrl)}" class="w-full h-full object-cover" alt="Profile" />`;
+              }
+            }
+          }).catch(err => {
+            console.error('Failed to update sidebar avatar:', err);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to save profile:', err);
+        alert('Gagal menyimpan profil. Silakan coba lagi.');
+      }
     }
   });
 
@@ -1604,6 +1661,20 @@ function renderUserProfile() {
       input.value = formState[field] || '';
     });
   });
+
+  // Load profile photo asynchronously (may be stored in IndexedDB)
+  if (user.profilePhoto) {
+    window.storage.resolveUserProfilePhoto(user).then(photoUrl => {
+      if (photoUrl) {
+        const photoEl = wrap.querySelector('#profile-photo');
+        if (photoEl) {
+          photoEl.innerHTML = `<img src="${h(photoUrl)}" class="w-full h-full object-cover" alt="Profile" />`;
+        }
+      }
+    }).catch(err => {
+      console.error('Failed to load profile photo:', err);
+    });
+  }
 
   return wrap;
 }
@@ -1890,9 +1961,9 @@ function renderUserTaxes() {
   }
 
   function openPaymentModal(tax) {
-    modalContainer.innerHTML = `
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
-        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl modal-content">
+    openGlobalModal(`
+      <div class="fixed inset-0 flex items-center justify-center p-4 modal-backdrop" style="background-color: rgba(0, 0, 0, 0.5);">
+        <div class="bg-white rounded-2xl max-w-md w-full modal-content" style="box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <h2 class="text-gray-900 font-semibold">Pembayaran Pajak</h2>
             <button id="pay-close" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">${iconClose('w-5 h-5')}</button>
@@ -1924,12 +1995,11 @@ function renderUserTaxes() {
           </div>
         </div>
       </div>
-    `;
-    modalContainer.classList.remove('hidden');
+    `);
+    const modalContainer = document.getElementById('global-modal-container');
 
     const close = () => {
-      modalContainer.classList.add('hidden');
-      modalContainer.innerHTML = '';
+      closeGlobalModal();
     };
 
     modalContainer.querySelector('#pay-close').addEventListener('click', close);
@@ -2082,22 +2152,22 @@ function renderUserAssets() {
                   ${coords}
                   <p class="text-gray-500 text-sm mb-2">Diperoleh: ${window.utils.formatDate(asset.acquisitionDate)}</p>
                   ${
-                    asset.photos && asset.photos.length > 0
+                    asset.photos && asset.photos.length > 0 && asset.photos.some(p => p.displayUrl)
                       ? `<div class="relative mb-3 group" data-asset-carousel="${asset.id}">
                           <div class="overflow-hidden rounded-lg border border-gray-200">
-                            <img data-slider-main src="${h(asset.photos[0].displayUrl || asset.photos[0].url || asset.photos[0].data)}" alt="${h(asset.photos[0].name || 'Photo')}" class="w-full h-40 object-cover transition-transform duration-300" />
+                            <img data-slider-main src="${h(asset.photos.find(p => p.displayUrl)?.displayUrl || '')}" alt="${h(asset.photos[0].name || 'Photo')}" class="w-full h-40 object-cover transition-transform duration-300" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'w-full h-40 bg-gray-100 flex items-center justify-center text-gray-400\\'>Gambar tidak tersedia</div>';" />
                           </div>
                           ${
-                            asset.photos.length > 1
+                            asset.photos.filter(p => p.displayUrl).length > 1
                               ? `<div class="absolute inset-0 flex items-center justify-between px-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                   <button data-slider-prev class="bg-black/50 hover:bg-black/70 text-white rounded-full p-2 shadow-lg backdrop-blur-sm transition-all">${iconBack('w-5 h-5')}</button>
-                                   <button data-slider-next class="bg-black/50 hover:bg-black/70 text-white rounded-full p-2 shadow-lg backdrop-blur-sm transition-all rotate-180">${iconBack('w-5 h-5')}</button>
+                                   <button data-slider-prev class="bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full p-2 shadow-lg backdrop-blur-sm transition-all">${iconBack('w-5 h-5')}</button>
+                                   <button data-slider-next class="bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full p-2 shadow-lg backdrop-blur-sm transition-all rotate-180">${iconBack('w-5 h-5')}</button>
                                  </div>
                                  <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5" data-slider-dots>
-                                   ${asset.photos.map((_, i) => `<span class="w-2 h-2 rounded-full ${i === 0 ? 'bg-white' : 'bg-white/50'} transition-all"></span>`).join('')}
+                                   ${asset.photos.filter(p => p.displayUrl).map((_, i) => `<span class="w-2 h-2 rounded-full ${i === 0 ? 'bg-white' : 'bg-white bg-opacity-50'} transition-all"></span>`).join('')}
                                  </div>
-                                 <div class="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-                                   <span data-slider-current>1</span>/${asset.photos.length}
+                                 <div class="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                                   <span data-slider-current>1</span>/${asset.photos.filter(p => p.displayUrl).length}
                                  </div>`
                               : ''
                           }
@@ -2105,10 +2175,10 @@ function renderUserAssets() {
                       : ''
                   }
                   ${
-                    asset.attachments && asset.attachments.length > 0
+                    asset.attachments && asset.attachments.length > 0 && asset.attachments.some(att => att.displayUrl)
                       ? `<div class="mb-3 flex flex-wrap gap-2">
-                          ${asset.attachments.map(att => `
-                            <a href="${h(att.displayUrl || att.url || att.data)}" target="_blank" class="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100 transition-colors">
+                          ${asset.attachments.filter(att => att.displayUrl).map(att => `
+                            <a href="${h(att.displayUrl)}" target="_blank" class="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100 transition-colors">
                               ${iconFile('w-3 h-3')}${h(att.name || 'Document')}
                             </a>
                           `).join('')}
@@ -2159,7 +2229,11 @@ function renderUserAssets() {
     listContainer.querySelectorAll('[data-asset-carousel]').forEach((carouselEl) => {
       const assetId = carouselEl.getAttribute('data-asset-carousel');
       const asset = assets.find((a) => a.id === assetId);
-      if (!asset || !asset.photos || asset.photos.length <= 1) return;
+      if (!asset || !asset.photos) return;
+      
+      // Only use photos with valid displayUrls
+      const validPhotos = asset.photos.filter(p => p.displayUrl);
+      if (validPhotos.length <= 1) return;
       
       const imgEl = carouselEl.querySelector('[data-slider-main]');
       const dotsContainer = carouselEl.querySelector('[data-slider-dots]');
@@ -2169,12 +2243,14 @@ function renderUserAssets() {
       let idx = 0;
       
       const updateImg = () => {
-        const photo = asset.photos[idx];
-        imgEl.src = photo.displayUrl || photo.url || photo.data;
-        imgEl.alt = photo.name || 'Photo';
+        const photo = validPhotos[idx];
+        if (photo && photo.displayUrl) {
+          imgEl.src = photo.displayUrl;
+          imgEl.alt = photo.name || 'Photo';
+        }
         if (currentSpan) currentSpan.textContent = idx + 1;
         dots.forEach((dot, i) => {
-          dot.className = `w-2 h-2 rounded-full ${i === idx ? 'bg-white' : 'bg-white/50'} transition-all`;
+          dot.className = `w-2 h-2 rounded-full ${i === idx ? 'bg-white' : 'bg-white bg-opacity-50'} transition-all`;
         });
       };
       
@@ -2183,12 +2259,12 @@ function renderUserAssets() {
       
       if (prev) prev.addEventListener('click', (e) => { 
         e.stopPropagation();
-        idx = (idx - 1 + asset.photos.length) % asset.photos.length; 
+        idx = (idx - 1 + validPhotos.length) % validPhotos.length; 
         updateImg(); 
       });
       if (next) next.addEventListener('click', (e) => { 
         e.stopPropagation();
-        idx = (idx + 1) % asset.photos.length; 
+        idx = (idx + 1) % validPhotos.length; 
         updateImg(); 
       });
       
@@ -2215,9 +2291,9 @@ function renderUserAssets() {
         const diff = touchStartX - touchEndX;
         if (Math.abs(diff) > 50) {
           if (diff > 0) {
-            idx = (idx + 1) % asset.photos.length;
+            idx = (idx + 1) % validPhotos.length;
           } else {
-            idx = (idx - 1 + asset.photos.length) % asset.photos.length;
+            idx = (idx - 1 + validPhotos.length) % validPhotos.length;
           }
           updateImg();
         }
@@ -2281,9 +2357,9 @@ function renderUserAssets() {
     };
 
     try {
-      setHTML(modalContainer, `
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto modal-content">
+      const modalWrapper = openGlobalModal(`
+      <div class="fixed inset-0 flex items-center justify-center p-4 modal-backdrop" style="background-color: rgba(0, 0, 0, 0.5);">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto modal-content" style="box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
           <div class="p-6 border-b border-gray-200 flex items-center gap-3">
             <button id="asset-back" class="p-2 hover:bg-gray-100 rounded-lg">${iconBack('w-6 h-6')}</button>
             <div>
@@ -2356,20 +2432,21 @@ function renderUserAssets() {
         </div>
       </div>
     `);
+      
+      // Use modalWrapper instead of modalContainer for all queries
+      const modalContainer = modalWrapper;
     } catch (err) {
       console.error('Render asset form error', err);
       alert('Gagal membuka form aset. Mohon cek data input.');
-      modalContainer.classList.add('hidden');
-      modalContainer.innerHTML = '';
+      closeGlobalModal();
       return;
     }
-    modalContainer.classList.remove('hidden');
 
     const close = () => {
-      modalContainer.classList.add('hidden');
-      modalContainer.innerHTML = '';
+      closeGlobalModal();
     };
 
+    const modalContainer = document.getElementById('global-modal-container');
     modalContainer.querySelector('#asset-back').addEventListener('click', close);
     modalContainer.querySelector('#asset-cancel').addEventListener('click', close);
     modalContainer.querySelectorAll('input[name="assetType"]').forEach((input) => {
@@ -2919,8 +2996,7 @@ function renderUserAssets() {
         return;
       }
       
-      modalContainer.classList.add('hidden');
-      modalContainer.innerHTML = '';
+      closeGlobalModal();
       renderList();
     });
 
@@ -2941,17 +3017,12 @@ function renderUserAssets() {
   function openTransferModal(asset) {
     const refreshAssets = renderList;
     const currentUserId = state.currentUser.id;
-    // Filter out current user - they shouldn't be able to transfer to themselves
-    const users = window.storage.getUsers().filter((u) => {
-      // Must be a regular user, active, and NOT the current user
-      if (u.role !== 'user') return false;
-      if (!u.isActive) return false;
-      if (u.id === currentUserId) return false;
-      return true;
-    });
+    let users = [];
+    let loading = true;
+    let fetchError = '';
     const modalHTML = `
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col modal-content">
+      <div class="fixed inset-0 flex items-center justify-center p-4 modal-backdrop" style="background-color: rgba(0, 0, 0, 0.5);">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col modal-content" style="box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 class="text-gray-900 font-semibold">Transfer Kepemilikan</h2>
@@ -2973,13 +3044,11 @@ function renderUserAssets() {
         </div>
       </div>
     `;
-    const parsedModal = new DOMParser().parseFromString(modalHTML, 'text/html');
-    modalContainer.innerHTML = '';
-    modalContainer.append(...Array.from(parsedModal.body.childNodes));
-    modalContainer.classList.remove('hidden');
+    openGlobalModal(modalHTML);
+    const modalContainer = document.getElementById('global-modal-container');
+    
     const close = () => {
-      modalContainer.classList.add('hidden');
-      modalContainer.innerHTML = '';
+      closeGlobalModal();
     };
     modalContainer.querySelector('#transfer-close').addEventListener('click', close);
     modalContainer.querySelector('#transfer-cancel').addEventListener('click', close);
@@ -2990,17 +3059,36 @@ function renderUserAssets() {
     let selected = null;
 
     function renderTransferList() {
+      if (fetchError) {
+        listEl.innerHTML = `<div class="text-center py-8 text-red-500">${h(fetchError)}</div>`;
+        submitBtn.disabled = true;
+        return;
+      }
+      if (loading) {
+        listEl.innerHTML = '<div class="text-center py-8 text-gray-500">Memuat daftar pengguna...</div>';
+        submitBtn.disabled = true;
+        return;
+      }
+      if (users.length === 0) {
+        listEl.innerHTML = '<div class="text-center py-8 text-gray-500">Tidak ada pengguna lain yang terdaftar</div>';
+        submitBtn.disabled = true;
+        return;
+      }
       const term = (searchEl.value || '').toLowerCase();
       const filtered = users.filter(
         (u) =>
           !term ||
-          u.name.toLowerCase().includes(term) ||
-          u.email.toLowerCase().includes(term) ||
+          (u.name || '').toLowerCase().includes(term) ||
+          (u.email || '').toLowerCase().includes(term) ||
           (u.nik || '').includes(term)
       );
       if (filtered.length === 0) {
-        listEl.innerHTML = `<div class="text-center py-8 text-gray-500">${users.length === 0 ? 'Tidak ada pengguna lain yang terdaftar' : 'Tidak ada pengguna yang sesuai dengan pencarian'}</div>`;
+        listEl.innerHTML = '<div class="text-center py-8 text-gray-500">Tidak ada pengguna yang sesuai dengan pencarian</div>';
+        submitBtn.disabled = true;
         return;
+      }
+      if (!filtered.some((u) => u.id === selected)) {
+        selected = null;
       }
       listEl.innerHTML = filtered
         .map(
@@ -3026,6 +3114,44 @@ function renderUserAssets() {
           submitBtn.disabled = !selected;
         });
       });
+      submitBtn.disabled = !selected;
+    }
+
+    function getFallbackUsers() {
+      return window.storage
+        .getUsers()
+        .filter((u) => u.role === 'user' && u.isActive && u.id !== currentUserId)
+        .map((u) => ({
+          id: u.id,
+          name: u.fullName || u.name || '',
+          email: u.email || '',
+          nik: u.nik || '',
+        }));
+    }
+
+    async function loadUsers() {
+      loading = true;
+      fetchError = '';
+      searchEl.disabled = true;
+      renderTransferList();
+      try {
+        if (window.sync && window.sync.listTransferUsers) {
+          const response = await window.sync.listTransferUsers();
+          users = Array.isArray(response.users) ? response.users : [];
+        }
+      } catch (err) {
+        console.error('Failed to fetch transfer users', err);
+        users = getFallbackUsers();
+        if (users.length === 0) {
+          fetchError = err.data?.error || err.message || 'Gagal memuat daftar pengguna.';
+        }
+      }
+      if (!users.length) {
+        users = getFallbackUsers();
+      }
+      loading = false;
+      searchEl.disabled = false;
+      renderTransferList();
     }
 
     submitBtn.addEventListener('click', async () => {
@@ -3052,13 +3178,13 @@ function renderUserAssets() {
     });
 
     searchEl.addEventListener('input', renderTransferList);
-    renderTransferList();
+    loadUsers();
   }
 
   function openDeleteModal(asset) {
     const modalHTML = `
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 modal-backdrop">
-        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 overflow-hidden modal-content">
+      <div class="fixed inset-0 flex items-center justify-center p-4 modal-backdrop" style="background-color: rgba(0, 0, 0, 0.5);">
+        <div class="bg-white rounded-2xl max-w-md w-full border border-gray-200 overflow-hidden modal-content" style="box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 class="text-gray-900 font-semibold">Hapus Aset</h2>
@@ -3077,14 +3203,11 @@ function renderUserAssets() {
         </div>
       </div>
     `;
-    const parsedModal = new DOMParser().parseFromString(modalHTML, 'text/html');
-    modalContainer.innerHTML = '';
-    modalContainer.append(...Array.from(parsedModal.body.childNodes));
-    modalContainer.classList.remove('hidden');
+    openGlobalModal(modalHTML);
+    const modalContainer = document.getElementById('global-modal-container');
 
     const close = () => {
-      modalContainer.classList.add('hidden');
-      modalContainer.innerHTML = '';
+      closeGlobalModal();
     };
 
     modalContainer.querySelector('[data-delete-close]')?.addEventListener('click', close);
@@ -3371,7 +3494,7 @@ function renderRegister(container) {
     </div>
     
     <div class="w-full max-w-2xl relative z-10 animate-in" style="--delay: 0">
-      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
+      <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
         <div class="text-center mb-8 animate-in" style="--delay: 1">
           <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-400 to-blue-500 rounded-full mb-4 animate-bounce-subtle shadow-lg">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -3678,7 +3801,7 @@ function renderForgot(container) {
     </div>
     
     <div class="w-full max-w-md relative z-10 animate-in" style="--delay: 0">
-      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
+      <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
         <button id="back-login" class="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-all duration-300 hover:-translate-x-1 animate-in" style="--delay: 1">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
@@ -3910,7 +4033,7 @@ function renderTwoFactor(container) {
     </div>
     
     <div class="w-full max-w-md relative z-10 animate-in" style="--delay: 0">
-      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
+      <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-2xl shadow-xl p-8 transform transition-all duration-500 hover:shadow-2xl">
         <button id="back-btn" class="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-all duration-300 hover:-translate-x-1 animate-in" style="--delay: 1">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
@@ -4296,6 +4419,21 @@ function renderUserLayout(container) {
 
   updateSidebarActive();
   renderUserPage(pageContainer);
+  
+  // Load sidebar profile photo asynchronously
+  const user = state.currentUser;
+  if (user && user.profilePhoto) {
+    window.storage.resolveUserProfilePhoto(user).then(photoUrl => {
+      if (photoUrl) {
+        const avatarEl = sidebar.querySelector('#sidebar-user-avatar');
+        if (avatarEl) {
+          avatarEl.innerHTML = `<img src="${h(photoUrl)}" class="w-full h-full object-cover" alt="Profile" />`;
+        }
+      }
+    }).catch(err => {
+      console.error('Failed to load sidebar profile photo:', err);
+    });
+  }
 }
 
 function renderUserSidebarContent() {
@@ -4316,7 +4454,7 @@ function renderUserSidebarContent() {
         </div>
         <div class="mt-4">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+            <div id="sidebar-user-avatar" class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center overflow-hidden">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />

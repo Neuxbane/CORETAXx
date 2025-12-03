@@ -204,6 +204,10 @@ async function updateProfile(profileData) {
   });
 }
 
+async function listTransferUsers() {
+  return await apiRequest(`${USERS_ENDPOINT}?action=list`);
+}
+
 // ========== User Data API ==========
 async function getUserData(key = null) {
   const url = key 
@@ -679,6 +683,7 @@ window.sync = {
   // Profile
   getProfile,
   updateProfile,
+  listTransferUsers,
   
   // User data
   getUserData,

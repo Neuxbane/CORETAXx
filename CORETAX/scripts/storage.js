@@ -227,36 +227,96 @@ async function getAssetsWithBlobs() {
     return assets;
   }
   
-  // Resolve IndexedDB URLs to object URLs for display
+  let assetsUpdated = false;
   const resolvedAssets = [];
   for (const asset of assets) {
     const resolved = { ...asset };
+    let assetChanged = false;
     
     // Resolve photos
     if (asset.photos && asset.photos.length > 0) {
+      const cleanedPhotos = [];
       resolved.photos = [];
       for (const photo of asset.photos) {
-        const resolvedUrl = await window.blobStorage.resolveMediaUrl(photo);
+        let displayUrl = null;
+        try {
+          displayUrl = await window.blobStorage.resolveMediaUrl(photo);
+        } catch (err) {
+          console.warn('[Storage] Failed to resolve photo URL:', err);
+        }
+
+        if (!displayUrl && photo.url && window.blobStorage.isIndexedDBUrl(photo.url)) {
+          assetChanged = true;
+          console.warn(`[Storage] Removing broken photo reference ${photo.url} for asset ${asset.id}`);
+          continue; // Skip pushing broken reference
+        }
+
+        const fallbackUrl = (photo.url && !window.blobStorage.isIndexedDBUrl(photo.url)) ? photo.url : photo.data;
+
+        if (!displayUrl && !fallbackUrl) {
+          assetChanged = true;
+          console.warn('[Storage] Dropping photo with no usable data for asset', asset.id);
+          continue;
+        }
+
         resolved.photos.push({
           ...photo,
-          displayUrl: resolvedUrl || photo.url || photo.data,
+          displayUrl: displayUrl || fallbackUrl || null,
         });
+        cleanedPhotos.push(photo);
+      }
+      if (assetChanged) {
+        asset.photos = cleanedPhotos;
+        assetsUpdated = true;
       }
     }
     
     // Resolve attachments
     if (asset.attachments && asset.attachments.length > 0) {
+      const cleanedAttachments = [];
       resolved.attachments = [];
       for (const att of asset.attachments) {
-        const resolvedUrl = await window.blobStorage.resolveMediaUrl(att);
+        let displayUrl = null;
+        try {
+          displayUrl = await window.blobStorage.resolveMediaUrl(att);
+        } catch (err) {
+          console.warn('[Storage] Failed to resolve attachment URL:', err);
+        }
+
+        if (!displayUrl && att.url && window.blobStorage.isIndexedDBUrl(att.url)) {
+          assetChanged = true;
+          console.warn(`[Storage] Removing broken attachment reference ${att.url} for asset ${asset.id}`);
+          continue;
+        }
+
+        const fallbackUrl = (att.url && !window.blobStorage.isIndexedDBUrl(att.url)) ? att.url : att.data;
+        if (!displayUrl && !fallbackUrl) {
+          assetChanged = true;
+          console.warn('[Storage] Dropping attachment with no usable data for asset', asset.id);
+          continue;
+        }
+
         resolved.attachments.push({
           ...att,
-          displayUrl: resolvedUrl || att.url || att.data,
+          displayUrl: displayUrl || fallbackUrl || null,
         });
+        cleanedAttachments.push(att);
+      }
+      if (assetChanged) {
+        asset.attachments = cleanedAttachments;
+        assetsUpdated = true;
       }
     }
     
     resolvedAssets.push(resolved);
+  }
+  
+  if (assetsUpdated) {
+    try {
+      writeLocal(STORAGE_KEYS.ASSETS, assets);
+    } catch (err) {
+      console.error('[Storage] Failed to persist cleaned assets:', err);
+    }
   }
   
   return resolvedAssets;
@@ -273,6 +333,93 @@ async function deleteAssetWithBlobs(assetId) {
   write(STORAGE_KEYS.ASSETS, filtered);
 }
 
+// ========== User-specific methods with blob handling ==========
+
+// Extract profile photo from user and store in IndexedDB
+async function extractAndStoreBlobsFromUser(user) {
+  if (!window.blobStorage) {
+    console.warn('[Storage] BlobStorage not available');
+    return user;
+  }
+  
+  const processedUser = { ...user };
+  
+  // Process profile photo
+  if (user.profilePhoto && typeof user.profilePhoto === 'string' && user.profilePhoto.startsWith('data:')) {
+    try {
+      const stored = await window.blobStorage.store(user.profilePhoto, {
+        id: `user-photo-${user.id}`,
+        assetId: `user-${user.id}`, // Use assetId for grouping
+        name: 'profile-photo',
+        type: 'image',
+      });
+      processedUser.profilePhoto = stored.url; // indexeddb://blob-id
+      console.log(`[Storage] Stored profile photo in IndexedDB for user: ${user.id}`);
+    } catch (err) {
+      console.error('[Storage] Failed to store profile photo in IndexedDB:', err);
+      // Remove large base64 to prevent quota issues, keep a flag
+      processedUser.profilePhoto = null;
+      processedUser.profilePhotoError = true;
+    }
+  }
+  
+  return processedUser;
+}
+
+// Save users with blob extraction for profile photos
+async function setUsersWithBlobs(users) {
+  const processedUsers = [];
+  
+  for (const user of users) {
+    const processed = await extractAndStoreBlobsFromUser(user);
+    processedUsers.push(processed);
+  }
+  
+  // Now store in localStorage (without large base64 data)
+  try {
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(processedUsers));
+    console.log(`[Storage] Saved ${processedUsers.length} users to localStorage`);
+  } catch (err) {
+    console.error('[Storage] Failed to save users:', err);
+    throw err;
+  }
+}
+
+// Synchronous version that handles blobs asynchronously in background
+function setUsersSync(users) {
+  // Check if any user has a base64 profile photo that needs extraction
+  const hasBase64Photos = users.some(u => 
+    u.profilePhoto && typeof u.profilePhoto === 'string' && u.profilePhoto.startsWith('data:')
+  );
+  
+  if (hasBase64Photos && window.blobStorage) {
+    // Process asynchronously to extract blobs
+    setUsersWithBlobs(users).catch(err => {
+      console.error('[Storage] Failed to save users with blobs:', err);
+    });
+  } else {
+    // No base64 photos, safe to save directly
+    try {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    } catch (err) {
+      console.error('[Storage] Failed to save users:', err);
+      throw err;
+    }
+  }
+}
+
+// Resolve user profile photo URL for display
+async function resolveUserProfilePhoto(user) {
+  if (!user || !user.profilePhoto) return null;
+  
+  if (window.blobStorage && window.blobStorage.isIndexedDBUrl(user.profilePhoto)) {
+    return await window.blobStorage.resolveMediaUrl({ url: user.profilePhoto });
+  }
+  
+  // Already a displayable URL
+  return user.profilePhoto;
+}
+
 window.storage = {
   keys: STORAGE_KEYS,
   ensureDefaults,
@@ -281,7 +428,9 @@ window.storage = {
   writeAsync,
   writeLocal,
   getUsers: () => read(STORAGE_KEYS.USERS, []),
-  setUsers: (users) => writeLocal(STORAGE_KEYS.USERS, users), // Users are managed by auth.php
+  setUsers: setUsersSync, // Now handles blob extraction
+  setUsersAsync: setUsersWithBlobs, // Async version for explicit waiting
+  resolveUserProfilePhoto, // Helper to resolve profile photo URLs
   getAssets: () => read(STORAGE_KEYS.ASSETS, []),
   setAssets: setAssetsWithBlobs, // Now uses IndexedDB for blobs
   setAssetsSync: (assets) => write(STORAGE_KEYS.ASSETS, assets), // Sync version without blob processing
